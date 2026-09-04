@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "PhotoTagger (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "PhotoTagger (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
