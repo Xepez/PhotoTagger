@@ -31,12 +31,9 @@ namespace PhotoTagger
         }
 
         // Thumbnail Queue
-        private async Task QueueThumbnailsAsync(
-            IEnumerable<Photo> photos)
+        private async Task QueueThumbnailsAsync(IEnumerable<Photo> photos)
         {
-            var tasks = photos.Select(
-                LoadThumbnailWithLimitAsync);
-
+            var tasks = photos.Select(LoadThumbnailWithLimitAsync);
             await Task.WhenAll(tasks);
         }
 
@@ -47,9 +44,7 @@ namespace PhotoTagger
 
             try
             {
-                photo.Thumbnail =
-                    await _thumbnailService.GetThumbnailAsync(
-                        photo.FilePath);
+                photo.Thumbnail = await _thumbnailService.GetThumbnailAsync(photo.FilePath);
             }
             finally
             {
