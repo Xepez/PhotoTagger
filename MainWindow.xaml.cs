@@ -23,11 +23,46 @@ namespace PhotoTagger
         private readonly ThumbnailService _thumbnailService = new();
         private readonly SemaphoreSlim _thumbnailSemaphore = new(6);
         private readonly PreviewService _previewService = new();
+        private readonly XmpService _xmpService = new();
 
 
         public MainWindow()
         {
             InitializeComponent();
+        }
+        
+        // Tag Button
+        private void AddTagButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (PhotoList.SelectedItem is not Photo)
+                return;
+
+            string tag = TagInput.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(tag))
+                return;
+
+            var currentTags =
+                PreviewTags.Text == "No tags"
+                    ? new List<string>()
+                    : PreviewTags.Text
+                        .Split(
+                            ',',
+                            StringSplitOptions.RemoveEmptyEntries)
+                        .Select(t => t.Trim())
+                        .ToList();
+
+            if (!currentTags.Contains(
+                    tag,
+                    StringComparer.OrdinalIgnoreCase))
+            {
+                currentTags.Add(tag);
+            }
+
+            PreviewTags.Text =
+                string.Join(", ", currentTags);
+
+            TagInput.Text = string.Empty;
         }
 
         // Thumbnail Queue
@@ -67,6 +102,9 @@ namespace PhotoTagger
             PreviewFileName.Text = photo.FileName;
             PreviewFilePath.Text = photo.FilePath;
 
+            var keywords = _xmpService.ReadKeywords(photo.FilePath);
+
+            PreviewTags.Text = keywords.Count > 0 ? string.Join(", ", keywords) : "No tags";
             PreviewImage.Source = null;
 
             var preview = await _previewService.LoadPreviewAsync(photo.FilePath);

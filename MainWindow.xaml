@@ -129,6 +129,33 @@
                             Opacity="0.7"
                             TextWrapping="Wrap" />
 
+                        <TextBlock
+                            Text="Tags"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Margin="0,12,0,4" />
+
+                        <TextBlock
+                            x:Name="PreviewTags"
+                            Text="No tags"
+                            TextWrapping="Wrap" />
+
+                        <StackPanel
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Margin="0,8,0,0">
+
+                            <TextBox
+                                x:Name="TagInput"
+                                Width="200"
+                                PlaceholderText="Enter a tag..." />
+
+                            <Button
+                                Content="Add Tag"
+                                Click="AddTagButton_Click" />
+
+                        </StackPanel>
+
                     </StackPanel>
 
                 </Grid>
