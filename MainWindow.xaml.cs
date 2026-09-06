@@ -65,6 +65,65 @@ namespace PhotoTagger
             TagInput.Text = string.Empty;
         }
 
+        // Test Tag Button
+        private async void TestWriteButton_Click(object sender, RoutedEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("****TEST****");
+            System.Diagnostics.Debug.WriteLine(XmpService.GetPropertyOptionsInfo());
+            System.Diagnostics.Debug.WriteLine("****END TEST****");
+
+            if (PhotoList.SelectedItem is not Photo photo)
+            {
+                PreviewTags.Text = "Select a photo first.";
+                return;
+            }
+
+            string tag = TagInput.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                PreviewTags.Text = "Enter a test tag first.";
+                return;
+            }
+
+            if (!string.Equals(Path.GetExtension(photo.FilePath), ".jpg", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(Path.GetExtension(photo.FilePath), ".jpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                PreviewTags.Text = "Test Write currently supports JPEG files only.";
+                return;
+            }
+
+            string tempPath = photo.FilePath + ".phototagger-test.jpg";
+
+            try
+            {
+                bool success = _xmpService.TestWriteKeyword(photo.FilePath, tag);
+                if (success)
+                {
+                    PreviewTags.Text = $"TEST SUCCESS: \"{tag}\" was written and read back.";
+
+                    // Confirm that the temporary file was removed.
+                    bool tempStillExists = File.Exists(tempPath);
+                    if (tempStillExists)
+                    {
+                        PreviewTags.Text += " WARNING: temporary file still exists.";
+                    }
+                    else
+                    {
+                        PreviewTags.Text += " Temporary file was removed.";
+                    }
+                }
+                else
+                {
+                    PreviewTags.Text = "TEST FAILED: the tag could not be verified.";
+                }
+            }
+            catch (Exception ex)
+            {
+                PreviewTags.Text = $"TEST ERROR: {ex.Message}";
+            }
+        }
+
         // Thumbnail Queue
         private async Task QueueThumbnailsAsync(IEnumerable<Photo> photos)
         {
@@ -72,8 +131,7 @@ namespace PhotoTagger
             await Task.WhenAll(tasks);
         }
 
-        private async Task LoadThumbnailWithLimitAsync(
-            Photo photo)
+        private async Task LoadThumbnailWithLimitAsync(Photo photo)
         {
             await _thumbnailSemaphore.WaitAsync();
 

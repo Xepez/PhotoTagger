@@ -153,6 +153,10 @@
                             <Button
                                 Content="Add Tag"
                                 Click="AddTagButton_Click" />
+                            
+                            <Button
+                                Content="Test Write"
+                                Click="TestWriteButton_Click" />
 
                         </StackPanel>
 

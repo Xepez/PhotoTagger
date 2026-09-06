@@ -11,8 +11,7 @@ namespace PhotoTagger.Services;
 
 public class XmpService
 {
-    private const string DcNamespace =
-        "http://purl.org/dc/elements/1.1/";
+    private const string DcNamespace = "http://purl.org/dc/elements/1.1/";
 
     public List<string> ReadKeywords(string filePath)
     {
@@ -20,13 +19,9 @@ public class XmpService
 
         try
         {
-            var directories =
-                ImageMetadataReader.ReadMetadata(filePath);
+            var directories = ImageMetadataReader.ReadMetadata(filePath);
 
-            var xmpDirectory =
-                directories
-                    .OfType<XmpDirectory>()
-                    .FirstOrDefault();
+            var xmpDirectory = directories.OfType<XmpDirectory>().FirstOrDefault();
 
             if (xmpDirectory == null)
                 return keywords;
@@ -36,18 +31,10 @@ public class XmpService
             if (xmpMeta == null)
                 return keywords;
 
-            int count =
-                xmpMeta.CountArrayItems(
-                    DcNamespace,
-                    "subject");
-
+            int count = xmpMeta.CountArrayItems(DcNamespace, "subject");
             for (int i = 1; i <= count; i++)
             {
-                var property =
-                    xmpMeta.GetArrayItem(
-                        DcNamespace,
-                        "subject",
-                        i);
+                var property = xmpMeta.GetArrayItem(DcNamespace, "subject", i);
 
                 if (property == null)
                     continue;
@@ -68,35 +55,32 @@ public class XmpService
         return keywords;
     }
 
-    public byte[] CreateXmpWithKeyword(
-        string filePath,
-        string keyword)
+    public byte[] CreateXmpWithKeyword(string filePath, string keyword)
     {
         IXmpMeta xmpMeta = ReadXmp(filePath);
 
+        // Ensure 'subject' is created as an array; mark options as array
+        var arrayOptions = new PropertyOptions();
+        arrayOptions.IsArray = true;
+
+        // AppendArrayItem(schemaNS, arrayName, arrayOptions, itemValue, itemOptions)
         xmpMeta.AppendArrayItem(
             DcNamespace,
             "subject",
-            null,
+            arrayOptions,
             keyword,
             null);
 
-        return XmpMetaFactory.SerializeToBuffer(
-            xmpMeta,
-            new SerializeOptions());
+        return XmpMetaFactory.SerializeToBuffer(xmpMeta, new SerializeOptions());
     }
 
     private IXmpMeta ReadXmp(string filePath)
     {
         try
         {
-            var directories =
-                ImageMetadataReader.ReadMetadata(filePath);
+            var directories = ImageMetadataReader.ReadMetadata(filePath);
 
-            var xmpDirectory =
-                directories
-                    .OfType<XmpDirectory>()
-                    .FirstOrDefault();
+            var xmpDirectory = directories.OfType<XmpDirectory>().FirstOrDefault();
 
             if (xmpDirectory?.XmpMeta != null)
                 return xmpDirectory.XmpMeta;
@@ -109,36 +93,21 @@ public class XmpService
         return XmpMetaFactory.Create();
     }
 
-    public bool TestWriteKeyword(
-        string filePath,
-        string keyword)
+    public bool TestWriteKeyword(string filePath, string keyword)
     {
-        string tempPath =
-            filePath + ".phototagger-test.jpg";
+        string tempPath = filePath + ".phototagger-test.jpg";
 
         try
         {
-            byte[] xmpPacket =
-                CreateXmpWithKeyword(
-                    filePath,
-                    keyword);
+            byte[] xmpPacket = CreateXmpWithKeyword(filePath, keyword);
 
             var writer = new JpegXmpWriter();
 
-            writer.WriteXmp(
-                filePath,
-                tempPath,
-                xmpPacket);
+            writer.WriteXmp(filePath, tempPath, xmpPacket);
 
-            var keywords =
-                ReadKeywords(tempPath);
+            var keywords = ReadKeywords(tempPath);
 
-            return keywords.Any(
-                existing =>
-                    string.Equals(
-                        existing,
-                        keyword,
-                        StringComparison.OrdinalIgnoreCase));
+            return keywords.Any(existing => string.Equals(existing, keyword, StringComparison.OrdinalIgnoreCase));
         }
         catch
         {
@@ -156,5 +125,17 @@ public class XmpService
                 // Ignore cleanup failures.
             }
         }
+    }
+
+    public static string GetPropertyOptionsInfo()
+    {
+        return string.Join(
+            Environment.NewLine,
+            typeof(PropertyOptions)
+                .GetFields(
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.Static)
+                .Select(field =>
+                    $"{field.Name} = {field.GetValue(null)}"));
     }
 }

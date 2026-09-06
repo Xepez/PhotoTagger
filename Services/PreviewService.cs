@@ -17,8 +17,7 @@ public class PreviewService
 
             var bitmap = new BitmapImage();
 
-            await bitmap.SetSourceAsync(
-                stream.AsRandomAccessStream());
+            await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
 
             return bitmap;
         }
