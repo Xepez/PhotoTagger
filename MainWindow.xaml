@@ -13,7 +13,6 @@
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -21,64 +20,148 @@
         <StackPanel
             Grid.Row="0"
             Orientation="Horizontal"
-            Spacing="12">
+            Spacing="12"
+            Margin="0,0,0,10">
 
             <Button
-                Content="Select Folder"
-                Click="SelectFolderButton_Click" />
+                x:Name="AddFolderButton"
+                Content="Add Folder"
+                Click="AddFolderButton_Click" />
+
+            <Button
+                x:Name="RescanButton"
+                Content="Rescan All"
+                Click="RescanButton_Click" />
+
+            <ProgressBar
+                x:Name="ScanProgress"
+                Width="160"
+                VerticalAlignment="Center"
+                Visibility="Collapsed" />
 
             <TextBlock
-                x:Name="FolderText"
+                x:Name="StatusText"
                 VerticalAlignment="Center"
-                Text="No folder selected"
                 TextTrimming="CharacterEllipsis" />
+
+            <TextBlock
+                x:Name="CountText"
+                VerticalAlignment="Center"
+                FontWeight="SemiBold" />
 
         </StackPanel>
 
-        <!-- Photo count -->
-        <TextBlock
-            x:Name="PhotoCountText"
-            Grid.Row="1"
-            Margin="0,8,0,8" />
-
-        <!-- Main area -->
-        <Grid Grid.Row="2">
+        <!-- Main area: filters | thumbnails | preview -->
+        <Grid Grid.Row="1" ColumnSpacing="16">
 
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
                 <ColumnDefinition Width="2*" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Thumbnail list -->
-            <ListView
-                x:Name="PhotoList"
-                Grid.Column="0"
-                SelectionMode="Single"
-                HorizontalContentAlignment="Stretch"
-                SelectionChanged="PhotoList_SelectionChanged">
+            <!-- Filter sidebar -->
+            <Grid Grid.Column="0" RowSpacing="8">
 
-                <ListView.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <ItemsWrapGrid
-                            Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ListView.ItemsPanel>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-                <ListView.ItemTemplate>
+                <StackPanel Grid.Row="0" Spacing="8">
+
+                    <RadioButtons
+                        x:Name="ViewModeSelector"
+                        Header="Browse"
+                        MaxColumns="2"
+                        SelectedIndex="0"
+                        SelectionChanged="ViewModeSelector_SelectionChanged">
+                        <x:String>Photos &amp; videos</x:String>
+                        <x:String>Folders</x:String>
+                    </RadioButtons>
+
+                    <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
+
+                    <TextBox
+                        x:Name="SearchBox"
+                        PlaceholderText="Search file names..."
+                        TextChanged="SearchBox_TextChanged" />
+
+                    <ComboBox
+                        x:Name="KindFilter"
+                        HorizontalAlignment="Stretch"
+                        SelectedIndex="0"
+                        SelectionChanged="KindFilter_SelectionChanged">
+                        <ComboBoxItem Content="Photos and videos" />
+                        <ComboBoxItem Content="Photos only" />
+                        <ComboBoxItem Content="Videos only" />
+                    </ComboBox>
+
+                    <CheckBox
+                        x:Name="UntaggedOnly"
+                        Content="Untagged only"
+                        Checked="FilterToggle_Changed"
+                        Unchecked="FilterToggle_Changed" />
+
+                    <ToggleSwitch
+                        x:Name="MatchAllToggle"
+                        IsOn="True"
+                        OnContent="Must have ALL selected tags"
+                        OffContent="Must have ANY selected tag"
+                        Toggled="FilterToggle_Changed" />
+
+                    <Button
+                        Content="Clear filters"
+                        Click="ClearFiltersButton_Click" />
+
+                </StackPanel>
+
+                <TextBlock
+                    Grid.Row="1"
+                    Text="Tags"
+                    FontSize="16"
+                    FontWeight="SemiBold" />
+
+                <ListView
+                    x:Name="TagList"
+                    Grid.Row="2"
+                    SelectionMode="Multiple"
+                    DisplayMemberPath="Label"
+                    SelectionChanged="TagList_SelectionChanged" />
+
+            </Grid>
+
+            <!-- Photo/video grid (items are created on demand as you scroll) -->
+            <GridView
+                x:Name="MediaGrid"
+                Grid.Column="1"
+                SelectionMode="Extended"
+                SelectionChanged="MediaGrid_SelectionChanged">
+
+                <GridView.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel
-                            Width="180"
-                            Margin="8">
+                        <StackPanel Width="180" Margin="6">
 
                             <Border
                                 Width="180"
                                 Height="140"
-                                BorderThickness="1"
-                                CornerRadius="4">
+                                CornerRadius="4"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}">
 
-                                <Image
-                                    Source="{Binding Thumbnail}"
-                                    Stretch="UniformToFill" />
+                                <Grid>
+                                    <Image
+                                        Source="{Binding Thumbnail}"
+                                        Stretch="UniformToFill" />
+
+                                    <FontIcon
+                                        Glyph="&#xE714;"
+                                        FontSize="16"
+                                        Margin="6"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Visibility="{Binding VideoBadgeVisibility}" />
+                                </Grid>
 
                             </Border>
 
@@ -90,14 +173,67 @@
 
                         </StackPanel>
                     </DataTemplate>
-                </ListView.ItemTemplate>
+                </GridView.ItemTemplate>
 
-            </ListView>
+            </GridView>
 
-            <!-- Large preview -->
-            <Border
+            <!-- Folder grid (shares the same cell; code shows one grid at a time) -->
+            <GridView
+                x:Name="FolderGrid"
                 Grid.Column="1"
-                Margin="16,0,0,0"
+                SelectionMode="Extended"
+                Visibility="Collapsed"
+                SelectionChanged="FolderGrid_SelectionChanged">
+
+                <GridView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Width="180" Margin="6">
+
+                            <Border
+                                Width="180"
+                                Height="140"
+                                CornerRadius="4"
+                                Background="{ThemeResource LayerFillColorDefaultBrush}">
+
+                                <Grid>
+                                    <Image
+                                        Source="{Binding Thumbnail}"
+                                        Stretch="UniformToFill" />
+
+                                    <FontIcon
+                                        Glyph="&#xE8B7;"
+                                        FontSize="16"
+                                        Margin="6"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Top" />
+                                </Grid>
+
+                            </Border>
+
+                            <TextBlock
+                                Text="{Binding Name}"
+                                FontWeight="SemiBold"
+                                HorizontalAlignment="Center"
+                                TextTrimming="CharacterEllipsis"
+                                Margin="4,6,4,0" />
+
+                            <TextBlock
+                                Text="{Binding Subtitle}"
+                                FontSize="12"
+                                Opacity="0.7"
+                                HorizontalAlignment="Center"
+                                TextTrimming="CharacterEllipsis"
+                                Margin="4,0,4,0" />
+
+                        </StackPanel>
+                    </DataTemplate>
+                </GridView.ItemTemplate>
+
+            </GridView>
+
+            <!-- Preview + tag editor -->
+            <Border
+                Grid.Column="2"
                 BorderThickness="1"
                 Padding="12">
 
@@ -106,19 +242,75 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Image
-                        x:Name="PreviewImage"
-                        Grid.Row="0"
-                        Stretch="Uniform" />
+                    <!-- Photo and video previews share one cell; code shows whichever applies -->
+                    <Grid Grid.Row="0">
+
+                        <Image
+                            x:Name="PreviewImage"
+                            Stretch="Uniform" />
+
+                        <MediaPlayerElement
+                            x:Name="PreviewPlayer"
+                            AreTransportControlsEnabled="True"
+                            AutoPlay="False"
+                            Stretch="Uniform"
+                            Visibility="Collapsed" />
+
+                    </Grid>
+
+                    <!-- Previous / next through the selected folder (hidden unless a folder is selected) -->
+                    <Grid
+                        x:Name="FolderNav"
+                        Grid.Row="1"
+                        Margin="0,8,0,0"
+                        ColumnSpacing="8"
+                        Visibility="Collapsed">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button
+                            x:Name="PrevButton"
+                            Grid.Column="0"
+                            Click="PrevButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE76B;" FontSize="12" />
+                                <TextBlock Text="Previous" />
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock
+                            x:Name="NavText"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            TextTrimming="CharacterEllipsis" />
+
+                        <Button
+                            x:Name="NextButton"
+                            Grid.Column="2"
+                            Click="NextButton_Click">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="Next" />
+                                <FontIcon Glyph="&#xE76C;" FontSize="12" />
+                            </StackPanel>
+                        </Button>
+
+                    </Grid>
 
                     <StackPanel
-                        Grid.Row="1"
+                        Grid.Row="2"
                         Margin="0,12,0,0">
 
                         <TextBlock
                             x:Name="PreviewFileName"
+                            Text="No selection"
                             FontSize="18"
                             FontWeight="SemiBold"
                             TextWrapping="Wrap" />
@@ -135,32 +327,71 @@
                             FontWeight="SemiBold"
                             Margin="0,12,0,4" />
 
-                        <TextBlock
-                            x:Name="PreviewTags"
-                            Text="No tags"
-                            TextWrapping="Wrap" />
+                        <ListView
+                            x:Name="PreviewTagList"
+                            MaxHeight="160"
+                            SelectionMode="None">
 
-                        <StackPanel
-                            Orientation="Horizontal"
-                            Spacing="8"
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock
+                                            Grid.Column="0"
+                                            Text="{Binding}"
+                                            VerticalAlignment="Center"
+                                            TextTrimming="CharacterEllipsis" />
+
+                                        <Button
+                                            Grid.Column="1"
+                                            Tag="{Binding}"
+                                            Padding="6,2"
+                                            Click="RemoveTag_Click"
+                                            ToolTipService.ToolTip="Remove tag">
+                                            <FontIcon Glyph="&#xE711;" FontSize="12" />
+                                        </Button>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+
+                        </ListView>
+
+                        <TextBlock
+                            x:Name="SelectionHint"
+                            Text="Select an item to see details and add tags."
+                            Opacity="0.7"
+                            TextWrapping="Wrap"
+                            Margin="0,4,0,0" />
+
+                    <ContentControl
+                            x:Name="TagEditorContainer"
+                            IsEnabled="False"
                             Margin="0,8,0,0">
 
-                            <TextBox
-                                x:Name="TagInput"
-                                Width="200"
-                                PlaceholderText="Enter a tag..." />
+                        <StackPanel
+                                x:Name="TagEditor"
+                                Orientation="Horizontal"
+                                Spacing="8">
+
+                            <AutoSuggestBox
+                                    x:Name="TagInput"
+                                    Width="220"
+                                    PlaceholderText="Add a tag..."
+                                    TextChanged="TagInput_TextChanged"
+                                    QuerySubmitted="TagInput_QuerySubmitted" />
 
                             <Button
-                                Content="Add Tag"
-                                Click="AddTagButton_Click" />
-                            
-                            <Button
-                                Content="Test Write"
-                                Click="TestWriteButton_Click" />
+                                    Content="Add Tag"
+                                    Click="AddTagButton_Click" />
 
                         </StackPanel>
+                    </ContentControl>
 
-                    </StackPanel>
+                </StackPanel>
 
                 </Grid>
 

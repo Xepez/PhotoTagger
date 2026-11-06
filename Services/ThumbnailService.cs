@@ -1,96 +1,46 @@
 ﻿using Microsoft.UI.Xaml.Media.Imaging;
+using PhotoTagger.Models;
 using System;
-using System.IO;
+using System.Diagnostics;
 using System.Threading.Tasks;
-using Windows.Graphics.Imaging;
+using Windows.Storage;
+using Windows.Storage.FileProperties;
 
 namespace PhotoTagger.Services;
 
+/// <summary>
+/// Asks Windows for the same thumbnail Explorer shows. That covers photos AND videos,
+/// respects EXIF rotation, keeps the aspect ratio, and Windows caches the results itself,
+/// so the old hand-rolled disk cache (and its squashing/rotation bugs) is no longer needed.
+/// You can delete %LOCALAPPDATA%\PhotoTagger\Thumbnails.
+/// </summary>
 public class ThumbnailService
 {
-    private readonly string _cacheDirectory;
-
-    public ThumbnailService()
-    {
-        _cacheDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "PhotoTagger",
-                "Thumbnails"
-            );
-
-        Directory.CreateDirectory(_cacheDirectory);
-    }
-
-    public async Task<BitmapImage?> GetThumbnailAsync(string filePath)
+    public async Task<BitmapImage?> GetThumbnailAsync(string filePath, MediaKind kind)
     {
         try
         {
-            string cacheFile = GetCacheFilePath(filePath);
+            StorageFile file = await StorageFile.GetFileFromPathAsync(filePath);
 
-            if (!File.Exists(cacheFile))
-            {
-                await CreateThumbnailAsync(filePath, cacheFile);
-            }
+            ThumbnailMode mode = kind == MediaKind.Video
+                ? ThumbnailMode.VideosView
+                : ThumbnailMode.PicturesView;
 
-            return await LoadBitmapAsync(cacheFile);
+            using StorageItemThumbnail thumbnail =
+                await file.GetThumbnailAsync(mode, 320, ThumbnailOptions.UseCurrentScale);
+
+            if (thumbnail == null || thumbnail.Size == 0)
+                return null;
+
+            var bitmap = new BitmapImage();
+            await bitmap.SetSourceAsync(thumbnail);
+            return bitmap;
         }
-        catch
+        catch (Exception ex)
         {
+            // Missing file, unsupported codec (e.g. HEIC without the HEIF extension), etc.
+            Debug.WriteLine($"Thumbnail failed for {filePath}: {ex.Message}");
             return null;
         }
-    }
-
-    private string GetCacheFilePath(string filePath)
-    {
-        string hash = Convert.ToHexString(
-            System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes(filePath))
-            );
-
-        return Path.Combine(_cacheDirectory, $"{hash}.jpg");
-    }
-
-    private async Task CreateThumbnailAsync(string sourcePath, string destinationPath)
-    {
-        using var sourceFile = File.OpenRead(sourcePath);
-
-        var decoder = await BitmapDecoder.CreateAsync(sourceFile.AsRandomAccessStream());
-
-        // Decode a reasonably small version of the image.
-        var transform = new BitmapTransform
-        {
-            ScaledWidth = 400,
-            ScaledHeight = 400
-        };
-
-        var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
-                BitmapPixelFormat.Bgra8,
-                BitmapAlphaMode.Ignore,
-                transform,
-                ExifOrientationMode.IgnoreExifOrientation,
-                ColorManagementMode.DoNotColorManage
-            );
-
-        using var outputFile = File.Create(destinationPath);
-
-        var encoder = await BitmapEncoder.CreateAsync(
-            BitmapEncoder.JpegEncoderId,
-            outputFile.AsRandomAccessStream());
-
-        encoder.SetSoftwareBitmap(softwareBitmap);
-
-        await encoder.FlushAsync();
-    }
-
-
-    private async Task<BitmapImage> LoadBitmapAsync(string filePath)
-    {
-        using var stream = File.OpenRead(filePath);
-
-        var bitmap = new BitmapImage();
-
-        await bitmap.SetSourceAsync(stream.AsRandomAccessStream());
-
-        return bitmap;
     }
 }
