@@ -24,6 +24,11 @@
             Margin="0,0,0,10">
 
             <Button
+                x:Name="SwitchViewButton"
+                Content="Switch View"
+                Click="SwitchViewButton_Click" />
+
+            <Button
                 x:Name="AddFolderButton"
                 Content="Add Folder"
                 Click="AddFolderButton_Click" />
@@ -69,6 +74,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
+                <!-- File and Type Filtering -->
                 <StackPanel Grid.Row="0" Spacing="8">
 
                     <RadioButtons
@@ -84,45 +90,85 @@
                     <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
 
                     <TextBox
-                        x:Name="SearchBox"
-                        PlaceholderText="Search file names..."
-                        TextChanged="SearchBox_TextChanged" />
+                        x:Name="SearchFileNameBox"
+                        PlaceholderText="Search files..."
+                        TextChanged="SearchFileNameBox_TextChanged" />
 
                     <ComboBox
                         x:Name="KindFilter"
                         HorizontalAlignment="Stretch"
                         SelectedIndex="0"
                         SelectionChanged="KindFilter_SelectionChanged">
-                        <ComboBoxItem Content="Photos and videos" />
+                        <ComboBoxItem Content="All" />
                         <ComboBoxItem Content="Photos only" />
                         <ComboBoxItem Content="Videos only" />
+                        <ComboBoxItem Content="Folders only" />
                     </ComboBox>
-
-                    <CheckBox
-                        x:Name="UntaggedOnly"
-                        Content="Untagged only"
-                        Checked="FilterToggle_Changed"
-                        Unchecked="FilterToggle_Changed" />
-
-                    <ToggleSwitch
-                        x:Name="MatchAllToggle"
-                        IsOn="True"
-                        OnContent="Must have ALL selected tags"
-                        OffContent="Must have ANY selected tag"
-                        Toggled="FilterToggle_Changed" />
-
-                    <Button
-                        Content="Clear filters"
-                        Click="ClearFiltersButton_Click" />
 
                 </StackPanel>
 
-                <TextBlock
-                    Grid.Row="1"
-                    Text="Tags"
-                    FontSize="16"
-                    FontWeight="SemiBold" />
+                <!-- Tag Filters -->
+                <StackPanel Grid.Row="1" Spacing="8">
 
+                    <TextBlock
+                        Text="Tags"
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Margin="0,12,0,0" />
+
+                    <Grid ColumnSpacing="8">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox
+                            x:Name="FilterTagsSearchBox"
+                            Grid.Column="0"
+                            PlaceholderText="Search tags..."
+                            TextChanged="FilterTagsSearchBox_TextChanged" />
+
+                        <Button
+                            x:Name="FilterResetButton"
+                            Grid.Column="1"
+                            Content="Clear filters"
+                            VerticalAlignment="Stretch"
+                            Click="ClearFiltersButton_Click" />
+
+                    </Grid>
+
+                    <Grid ColumnSpacing="8">
+
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <CheckBox
+                            x:Name="UntaggedOnly"
+                            Grid.Column="0"
+                            Content="Untagged Only"
+                            MinWidth="0"
+                            VerticalAlignment="Center"
+                            Checked="FilterToggle_Changed"
+                            Unchecked="FilterToggle_Changed" />
+
+                        <ToggleSwitch
+                            x:Name="MatchAllToggle"
+                            Grid.Column="1"
+                            MinWidth="0"
+                            VerticalAlignment="Center"
+                            IsOn="True"
+                            OnContent="ALL tags"
+                            OffContent="ANY tags"
+                            Toggled="FilterToggle_Changed" />
+
+                    </Grid>
+
+                </StackPanel>
+
+                <!-- Tags List -->
                 <ListView
                     x:Name="TagList"
                     Grid.Row="2"
@@ -132,7 +178,7 @@
 
             </Grid>
 
-            <!-- Photo/video grid (items are created on demand as you scroll) -->
+            <!-- Photo/video grid -->
             <GridView
                 x:Name="MediaGrid"
                 Grid.Column="1"
@@ -231,7 +277,7 @@
 
             </GridView>
 
-            <!-- Preview + tag editor -->
+            <!-- Preview + Tag Editor -->
             <Border
                 Grid.Column="2"
                 BorderThickness="1"
@@ -367,31 +413,32 @@
                             TextWrapping="Wrap"
                             Margin="0,4,0,0" />
 
-                    <ContentControl
+                        <ContentControl
                             x:Name="TagEditorContainer"
                             IsEnabled="False"
                             Margin="0,8,0,0">
 
-                        <StackPanel
+                            <StackPanel
                                 x:Name="TagEditor"
                                 Orientation="Horizontal"
                                 Spacing="8">
 
-                            <AutoSuggestBox
+                                <AutoSuggestBox
                                     x:Name="TagInput"
                                     Width="220"
                                     PlaceholderText="Add a tag..."
                                     TextChanged="TagInput_TextChanged"
                                     QuerySubmitted="TagInput_QuerySubmitted" />
 
-                            <Button
+                                <Button
                                     Content="Add Tag"
                                     Click="AddTagButton_Click" />
 
-                        </StackPanel>
-                    </ContentControl>
+                            </StackPanel>
+                            
+                        </ContentControl>
 
-                </StackPanel>
+                    </StackPanel>
 
                 </Grid>
 
@@ -400,5 +447,5 @@
         </Grid>
 
     </Grid>
-
+    
 </Window>

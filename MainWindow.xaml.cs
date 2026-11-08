@@ -61,10 +61,7 @@ namespace PhotoTagger
             _ = LoadLibraryAsync();
         }
 
-        // ------------------------------------------------------------------
-        // Startup
-        // ------------------------------------------------------------------
-
+        #region Start Up
         private async Task LoadLibraryAsync()
         {
             try
@@ -76,7 +73,7 @@ namespace PhotoTagger
                 }
                 catch (Exception ex)
                 {
-                    StatusText.Text = "Daily backup failed: " + ex.Message;
+                    PopupMessage(true, "Daily backup failed: " + ex.Message);
                 }
 
                 await RefreshTagListAsync();
@@ -84,21 +81,26 @@ namespace PhotoTagger
 
                 var roots = await Task.Run(() => _repo.GetRoots());
                 if (roots.Count == 0)
-                    StatusText.Text = "Click \"Add Folder\" to start building your library.";
+                    UpdateStatusText("Click \"Add Folder\" to start building your library.");
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Startup error: " + ex.Message;
+                PopupMessage(true, "Startup error: " + ex.Message);
             }
             finally
             {
                 _filtersReady = true;
             }
         }
+        #endregion
 
-        // ------------------------------------------------------------------
-        // Folders and scanning
-        // ------------------------------------------------------------------
+        #region Header Buttons
+
+        private async void SwitchViewButton_Click(object sender, RoutedEventArgs e)
+        {
+            // TODO
+            int x = 0;
+        }
 
         private async void AddFolderButton_Click(object sender, RoutedEventArgs e)
         {
@@ -120,7 +122,7 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Could not add folder: " + ex.Message;
+                PopupMessage(true, "Could not add folder: " + ex.Message);
             }
         }
 
@@ -133,7 +135,7 @@ namespace PhotoTagger
                 var roots = await Task.Run(() => _repo.GetRoots());
                 if (roots.Count == 0)
                 {
-                    StatusText.Text = "No folders yet. Click \"Add Folder\" first.";
+                    UpdateStatusText("No folders yet. Click \"Add Folder\" first.");
                     return;
                 }
 
@@ -141,7 +143,7 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Rescan error: " + ex.Message;
+                PopupMessage(true, "Rescan error: " + ex.Message);
             }
         }
 
@@ -169,11 +171,11 @@ namespace PhotoTagger
                     if (!Directory.Exists(root))
                     {
                         // Drive unplugged, etc. Leave its entries alone.
-                        StatusText.Text = $"Skipped (not available): {root}";
+                        UpdateStatusText($"Skipped (not available): {root}", 4);
                         continue;
                     }
 
-                    StatusText.Text = $"Scanning {root} ...";
+                    UpdateStatusText($"Scanning {root} ...");
                     ScanProgress.IsIndeterminate = true;
 
                     SyncResult result = await Task.Run(() =>
@@ -189,13 +191,11 @@ namespace PhotoTagger
                     unreadable += result.Unreadable;
                 }
 
-                StatusText.Text =
-                    $"Scan complete: {added} new, {moved} moved, {updated} changed, " +
-                    $"{missing} missing, {unreadable} unreadable.";
+                UpdateStatusText($"Scan complete: {added} new, {moved} moved, {updated} changed, {missing} missing, {unreadable} unreadable.", 4);
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Scan error: " + ex.Message;
+                PopupMessage(true, "Scan error: " + ex.Message);
             }
             finally
             {
@@ -208,6 +208,7 @@ namespace PhotoTagger
             await RefreshTagListAsync();
             await ApplyFilterAsync();
         }
+        #endregion
 
         // ------------------------------------------------------------------
         // Browse mode: photos & videos  <->  folders
@@ -227,7 +228,7 @@ namespace PhotoTagger
             FolderGrid.Visibility = folders ? Visibility.Visible : Visibility.Collapsed;
 
             KindFilter.IsEnabled = !folders;   // folders hold both photos and videos
-            SearchBox.PlaceholderText = folders ? "Search folders (name or path)..." : "Search file names...";
+            SearchFileNameBox.PlaceholderText = folders ? "Search folders (name or path)..." : "Search file names..."; // TODO - Remove after folder and picture merge
 
             ResetPreview();
 
@@ -254,7 +255,7 @@ namespace PhotoTagger
 
             return new MediaFilter
             {
-                Text = SearchBox.Text,
+                Text = SearchFileNameBox.Text,
                 Kind = kind,
                 UntaggedOnly = UntaggedOnly.IsChecked == true,
                 MatchAllTags = MatchAllToggle.IsOn,
@@ -289,14 +290,20 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Filter error: " + ex.Message;
+                PopupMessage(true, "Filter error: " + ex.Message);
             }
         }
 
-        private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        private void SearchFileNameBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (!_filtersReady) return;
             _ = ApplyFilterAsync();
+        }
+
+        private void FilterTagsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!_filtersReady) return;
+            _ = ApplyFilterAsync(); // TODO - Filter down tags list
         }
 
         private void KindFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -325,7 +332,7 @@ namespace PhotoTagger
             _filtersReady = false;   // reset everything without firing a query per control
             try
             {
-                SearchBox.Text = string.Empty;
+                SearchFileNameBox.Text = string.Empty;
                 KindFilter.SelectedIndex = 0;
                 UntaggedOnly.IsChecked = false;
                 MatchAllToggle.IsOn = true;
@@ -359,7 +366,7 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Could not load tags: " + ex.Message;
+                PopupMessage(true, "Could not load tags: " + ex.Message);
                 return;
             }
 
@@ -462,7 +469,7 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Could not load item: " + ex.Message;
+                PopupMessage(true, "Could not load item: " + ex.Message);
             }
         }
 
@@ -474,6 +481,7 @@ namespace PhotoTagger
             StopVideo();
             PreviewImage.Source = null;
             _currentTags.Clear();
+            TagInput.Text = "";
 
             _folderMedia = new List<MediaItem>();
             _folderIndex = -1;
@@ -575,7 +583,7 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Could not open folder: " + ex.Message;
+                PopupMessage(true, "Could not open folder: " + ex.Message);
             }
         }
 
@@ -684,14 +692,14 @@ namespace PhotoTagger
                 else
                 {
                     string what = target == TagTarget.Folder ? "folders" : "items";
-                    StatusText.Text = $"Added \"{tag}\" to {ids.Count} {what}.";
+                    UpdateStatusText($"Added \"{tag}\" to {ids.Count} {what}.", 4);
                 }
 
                 await RefreshTagListAsync();
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Could not add tag: " + ex.Message;
+                PopupMessage(true, "Could not add tag: " + ex.Message);
             }
         }
 
@@ -719,8 +727,38 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Could not remove tag: " + ex.Message;
+                PopupMessage(true, "Could not remove tag: " + ex.Message);
             }
         }
+
+        #region Helpers
+
+        private async void UpdateStatusText(string statusText, int secondsTimeout = 0)
+        {
+            StatusText.Text = statusText;
+
+            if (secondsTimeout != 0)
+            {
+                await Task.Run(() =>
+                {
+                    Task.Delay(secondsTimeout * 1000).Wait();
+                });
+                
+                StatusText.Text = default;
+            }
+        }
+        private async void PopupMessage(bool isError, string statusText)
+        {
+            ContentDialog dialogPopup = new ContentDialog()
+            {
+                Title = isError ? "Error" : "Notice",
+                Content = statusText,
+                CloseButtonText = "Ok"
+            };
+
+            await dialogPopup.ShowAsync();
+        }
+
+        #endregion
     }
 }
