@@ -11,7 +11,8 @@ namespace PhotoTagger.Models;
 public enum MediaKind
 {
     Image = 0,
-    Video = 1
+    Video = 1,
+    Folder = 2
 }
 
 /// <summary>Tags can be attached to individual files or to whole folders.</summary>

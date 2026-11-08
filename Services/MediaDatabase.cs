@@ -1,6 +1,5 @@
 ﻿using Microsoft.Data.Sqlite;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -23,7 +22,7 @@ public sealed class MediaDatabase
         DbPath = dbPath ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PhotoTagger",
-            "library.db");
+            "PhotoTagger.db");
 
         Directory.CreateDirectory(Path.GetDirectoryName(DbPath)!);
 
@@ -78,11 +77,10 @@ public sealed class MediaDatabase
         if (version >= 1)
             BackupBeforeUpgrade(version);
 
-        if (version < 1) CreateV1(conn);
-        if (version < 2) UpgradeToV2(conn);
+        if (version < 1) CreateDB(conn);
     }
 
-    private static void CreateV1(SqliteConnection conn)
+    private static void CreateDB(SqliteConnection conn)
     {
         using var tx = conn.BeginTransaction();
         using var create = conn.CreateCommand();
@@ -97,10 +95,13 @@ public sealed class MediaDatabase
                 modified_utc INTEGER NOT NULL,            -- DateTime ticks (UTC)
                 fingerprint  TEXT    NOT NULL,            -- size + head/tail hash; survives moves/renames
                 missing      INTEGER NOT NULL DEFAULT 0,  -- 1 = not found on last scan (tags are kept)
-                added_utc    INTEGER NOT NULL
+                added_utc    INTEGER NOT NULL,
+                isFolder     BIT     NOT NULL DEFAULT 0,
+                folder_id INTEGER REFERENCES folders(id)
             );
             CREATE INDEX idx_media_fingerprint ON media(fingerprint, size_bytes);
             CREATE INDEX idx_media_kind ON media(kind);
+            CREATE INDEX idx_media_folder ON media(folder_id);
 
             CREATE TABLE tags (
                 id   INTEGER PRIMARY KEY,
@@ -118,103 +119,24 @@ public sealed class MediaDatabase
                 path TEXT PRIMARY KEY COLLATE NOCASE
             );
 
+            CREATE TABLE folders (
+                id      INTEGER PRIMARY KEY,
+                path    TEXT    NOT NULL UNIQUE COLLATE NOCASE,   -- full directory path, no trailing slash
+                name    TEXT    NOT NULL,
+                missing INTEGER NOT NULL DEFAULT 0                -- 1 = no photos/videos found in it on last scan (tags kept)
+            );
+
+            CREATE TABLE folder_tags (
+                folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+                tag_id    INTEGER NOT NULL REFERENCES tags(id)    ON DELETE CASCADE,
+                PRIMARY KEY (folder_id, tag_id)
+            ) WITHOUT ROWID;
+            CREATE INDEX idx_folder_tags_tag ON folder_tags(tag_id, folder_id);
+
             PRAGMA user_version = 1;
-            ";
+        ";
+
         create.ExecuteNonQuery();
-        tx.Commit();
-    }
-
-    // v2: folders become first-class (they can carry tags), and every file points at its folder.
-    private static void UpgradeToV2(SqliteConnection conn)
-    {
-        using var tx = conn.BeginTransaction();
-
-        using (var ddl = conn.CreateCommand())
-        {
-            ddl.Transaction = tx;
-            ddl.CommandText = @"
-                CREATE TABLE folders (
-                    id      INTEGER PRIMARY KEY,
-                    path    TEXT    NOT NULL UNIQUE COLLATE NOCASE,   -- full directory path, no trailing slash
-                    name    TEXT    NOT NULL,
-                    missing INTEGER NOT NULL DEFAULT 0                -- 1 = no photos/videos found in it on last scan (tags kept)
-                );
-
-                CREATE TABLE folder_tags (
-                    folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
-                    tag_id    INTEGER NOT NULL REFERENCES tags(id)    ON DELETE CASCADE,
-                    PRIMARY KEY (folder_id, tag_id)
-                ) WITHOUT ROWID;
-                CREATE INDEX idx_folder_tags_tag ON folder_tags(tag_id, folder_id);
-
-                ALTER TABLE media ADD COLUMN folder_id INTEGER REFERENCES folders(id);
-                CREATE INDEX idx_media_folder ON media(folder_id);
-                ";
-            ddl.ExecuteNonQuery();
-        }
-
-        // Backfill: work out each existing file's folder from its path.
-        var rows = new List<(long Id, string Dir)>();
-        using (var read = conn.CreateCommand())
-        {
-            read.Transaction = tx;
-            read.CommandText = "SELECT id, path FROM media";
-            using var r = read.ExecuteReader();
-            while (r.Read())
-                rows.Add((r.GetInt64(0), MediaRepository.FolderPathOf(r.GetString(1))));
-        }
-
-        var folderIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-
-        using (var insert = conn.CreateCommand())
-        {
-            insert.Transaction = tx;
-            insert.CommandText = "INSERT INTO folders(path, name, missing) VALUES (@p, @n, 0)";
-            var pPath = insert.Parameters.Add("@p", SqliteType.Text);
-            var pName = insert.Parameters.Add("@n", SqliteType.Text);
-
-            using var lastId = conn.CreateCommand();
-            lastId.Transaction = tx;
-            lastId.CommandText = "SELECT last_insert_rowid()";
-
-            foreach (string dir in rows.Select(x => x.Dir).Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                pPath.Value = dir;
-                pName.Value = MediaRepository.FolderNameOf(dir);
-                insert.ExecuteNonQuery();
-                folderIds[dir] = Convert.ToInt64(lastId.ExecuteScalar());
-            }
-        }
-
-        using (var update = conn.CreateCommand())
-        {
-            update.Transaction = tx;
-            update.CommandText = "UPDATE media SET folder_id = @f WHERE id = @id";
-            var pFolder = update.Parameters.Add("@f", SqliteType.Integer);
-            var pId = update.Parameters.Add("@id", SqliteType.Integer);
-
-            foreach (var (id, dir) in rows)
-            {
-                pFolder.Value = folderIds[dir];
-                pId.Value = id;
-                update.ExecuteNonQuery();
-            }
-        }
-
-        using (var missing = conn.CreateCommand())
-        {
-            missing.Transaction = tx;
-            missing.CommandText = MediaRepository.RecomputeFolderMissingSql;
-            missing.ExecuteNonQuery();
-        }
-
-        using (var version = conn.CreateCommand())
-        {
-            version.Transaction = tx;
-            version.CommandText = "PRAGMA user_version = 2;";
-            version.ExecuteNonQuery();
-        }
-
         tx.Commit();
     }
 
@@ -277,13 +199,13 @@ public sealed class MediaDatabase
     {
         string dir = BackupDirectory();
 
-        string file = Path.Combine(dir, $"library-{DateTime.Now:yyyy-MM-dd}.db");
+        string file = Path.Combine(dir, $"PhotoTagger-{DateTime.Now:yyyy-MM-dd}.db");
         if (File.Exists(file))
             return null;
 
         Backup(file);
 
-        foreach (var old in Directory.GetFiles(dir, "library-*.db")
+        foreach (var old in Directory.GetFiles(dir, "PhotoTagger-*.db")
                                      .OrderByDescending(f => f, StringComparer.Ordinal)
                                      .Skip(keep))
         {

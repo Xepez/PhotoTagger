@@ -435,7 +435,7 @@
                                     Click="AddTagButton_Click" />
 
                             </StackPanel>
-                            
+
                         </ContentControl>
 
                     </StackPanel>
@@ -447,5 +447,5 @@
         </Grid>
 
     </Grid>
-    
+
 </Window>

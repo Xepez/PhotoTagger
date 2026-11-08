@@ -8,27 +8,25 @@ namespace PhotoTagger.Services;
 
 public sealed record ScannedFile(string Path, MediaKind Kind, long SizeBytes, long ModifiedUtcTicks);
 
-/// <summary>Replaces PhotoScanner. Finds photos AND videos and never throws on unreadable folders.</summary>
 public class MediaScanner
 {
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif", ".bmp"
+        ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp"
     };
 
-    // Whether a given video plays in the preview depends on the codecs installed in Windows.
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".mkv", ".webm", ".3gp"
+        ".gif", ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".mkv", ".webm", ".3gp"
     };
 
-    public List<ScannedFile> Scan(string folderPath)
+    public List<ScannedFile> Scan(string folderPath, bool searchSubdirectories = false)
     {
         // Skips folders we aren't allowed to read instead of throwing.
         // Default options also skip hidden/system entries (e.g. $RECYCLE.BIN).
         var options = new EnumerationOptions
         {
-            RecurseSubdirectories = true,
+            RecurseSubdirectories = searchSubdirectories,
             IgnoreInaccessible = true
         };
 
@@ -59,8 +57,7 @@ public class MediaScanner
     {
         const int Chunk = 64 * 1024;
 
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
         long length = stream.Length;

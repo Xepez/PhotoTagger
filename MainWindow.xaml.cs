@@ -99,7 +99,7 @@ namespace PhotoTagger
         private async void SwitchViewButton_Click(object sender, RoutedEventArgs e)
         {
             // TODO
-            int x = 0;
+            PopupMessage(true, "Switch View - WIP");
         }
 
         private async void AddFolderButton_Click(object sender, RoutedEventArgs e)
@@ -152,6 +152,7 @@ namespace PhotoTagger
             _scanning = true;
             AddFolderButton.IsEnabled = false;
             RescanButton.IsEnabled = false;
+            SwitchViewButton.IsEnabled = false;
             ScanProgress.Visibility = Visibility.Visible;
 
             // Constructed on the UI thread, so the callback runs on the UI thread too.
@@ -202,6 +203,7 @@ namespace PhotoTagger
                 ScanProgress.Visibility = Visibility.Collapsed;
                 AddFolderButton.IsEnabled = true;
                 RescanButton.IsEnabled = true;
+                SwitchViewButton.IsEnabled = true;
                 _scanning = false;
             }
 
@@ -695,8 +697,7 @@ namespace PhotoTagger
                 }
                 else
                 {
-                    string what = target == TagTarget.Folder ? "folders" : "items";
-                    UpdateStatusText($"Added \"{tag}\" to {ids.Count} {what}.", 4);
+                    UpdateStatusText($"Added \"{tag}\" to {ids.Count} items.", 4);
                 }
 
                 await RefreshTagListAsync();
@@ -751,10 +752,12 @@ namespace PhotoTagger
                 StatusText.Text = default;
             }
         }
+
         private async void PopupMessage(bool isError, string statusText)
         {
             ContentDialog dialogPopup = new ContentDialog()
             {
+                XamlRoot = Content?.XamlRoot,
                 Title = isError ? "Error" : "Notice",
                 Content = statusText,
                 CloseButtonText = "Ok"
