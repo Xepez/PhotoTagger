@@ -442,16 +442,27 @@ public sealed class MediaRepository
     }
 
     /// <summary>Tags in use by files (or by folders), with counts. Unused tags are not listed.</summary>
-    public List<TagInfo> GetTagsWithCounts(TagTarget target)
+    public List<TagInfo> GetTagsWithCounts(TagTarget target, string tagNameFilter = "")
     {
         var (table, column, parent) = Link(target);
 
+        (string Name, object? Value)[] parameters = [($"@{nameof(tagNameFilter)}", "%" + tagNameFilter + "%")];
+
+        StringBuilder sql = new(@$"
+            SELECT t.id, t.name, COUNT(*)
+            FROM tags t
+            JOIN {table} l ON l.tag_id = t.id
+            JOIN {parent} x ON x.id = l.{column} AND x.missing = 0");
+
+        if (tagNameFilter != "")
+            sql.Append($" WHERE t.name LIKE @{nameof(tagNameFilter)} ");
+
+        sql.Append($@"
+            GROUP BY t.id 
+            ORDER BY t.name COLLATE NOCASE");
+
         using var conn = _db.Open();
-        using var cmd = Cmd(conn, null,
-            $"SELECT t.id, t.name, COUNT(*) FROM tags t " +
-            $"JOIN {table} l ON l.tag_id = t.id " +
-            $"JOIN {parent} x ON x.id = l.{column} AND x.missing = 0 " +
-            $"GROUP BY t.id ORDER BY t.name COLLATE NOCASE");
+        using var cmd = Cmd(conn, null, sql.ToString(), parameters);
         using var r = cmd.ExecuteReader();
 
         var tags = new List<TagInfo>();
@@ -526,8 +537,7 @@ public sealed class MediaRepository
     // Small ADO.NET helpers
     // ------------------------------------------------------------------
 
-    private static SqliteCommand Cmd(
-        SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
+    private static SqliteCommand Cmd(SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
     {
         var cmd = conn.CreateCommand();
         cmd.Transaction = tx;

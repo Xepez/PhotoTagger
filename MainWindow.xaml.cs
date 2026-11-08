@@ -77,7 +77,7 @@ namespace PhotoTagger
                 }
 
                 await RefreshTagListAsync();
-                await ApplyFilterAsync();
+                await ApplyMediaListFilterAsync();
 
                 var roots = await Task.Run(() => _repo.GetRoots());
                 if (roots.Count == 0)
@@ -206,7 +206,7 @@ namespace PhotoTagger
             }
 
             await RefreshTagListAsync();
-            await ApplyFilterAsync();
+            await ApplyMediaListFilterAsync();
         }
         #endregion
 
@@ -237,7 +237,7 @@ namespace PhotoTagger
             else FolderGrid.ItemsSource = null;
 
             await RefreshTagListAsync();   // the tag counts differ between files and folders
-            await ApplyFilterAsync();
+            await ApplyMediaListFilterAsync();
         }
 
         // ------------------------------------------------------------------
@@ -263,7 +263,7 @@ namespace PhotoTagger
             };
         }
 
-        private async Task ApplyFilterAsync()
+        private async Task ApplyMediaListFilterAsync()
         {
             int version = ++_filterVersion;
             bool folders = FolderMode;
@@ -290,26 +290,26 @@ namespace PhotoTagger
             }
             catch (Exception ex)
             {
-                PopupMessage(true, "Filter error: " + ex.Message);
+                PopupMessage(true, "Media Filter error: " + ex.Message);
             }
         }
 
         private void SearchFileNameBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (!_filtersReady) return;
-            _ = ApplyFilterAsync();
+            _ = ApplyMediaListFilterAsync();
         }
 
         private void FilterTagsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (!_filtersReady) return;
-            _ = ApplyFilterAsync(); // TODO - Filter down tags list
+            _ = RefreshTagListAsync();
         }
 
         private void KindFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_filtersReady) return;
-            _ = ApplyFilterAsync();
+            _ = ApplyMediaListFilterAsync();
         }
 
         private void FilterToggle_Changed(object sender, RoutedEventArgs e)
@@ -318,13 +318,13 @@ namespace PhotoTagger
 
             // "Untagged only" and a tag selection contradict each other, so disable the list.
             TagList.IsEnabled = UntaggedOnly.IsChecked != true;
-            _ = ApplyFilterAsync();
+            _ = ApplyMediaListFilterAsync();
         }
 
         private void TagList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_filtersReady || _updatingTagList) return;
-            _ = ApplyFilterAsync();
+            _ = ApplyMediaListFilterAsync();
         }
 
         private async void ClearFiltersButton_Click(object sender, RoutedEventArgs e)
@@ -344,7 +344,7 @@ namespace PhotoTagger
                 _filtersReady = true;
             }
 
-            await ApplyFilterAsync();
+            await ApplyMediaListFilterAsync();
         }
 
         // Rebuilds the sidebar tag list (names + counts for the current mode) and keeps the selection.
@@ -358,10 +358,14 @@ namespace PhotoTagger
             TagTarget target = CurrentTarget;
             List<TagInfo> tags;
             List<string> allNames;
+            string filter = FilterTagsSearchBox.Text;
+
+            if (filter == default)
+                filter = "";
 
             try
             {
-                tags = await Task.Run(() => _repo.GetTagsWithCounts(target));
+                tags = await Task.Run(() => _repo.GetTagsWithCounts(target, filter));
                 allNames = await Task.Run(() => _repo.GetAllTagNames());
             }
             catch (Exception ex)
@@ -389,7 +393,7 @@ namespace PhotoTagger
 
             // A selected tag that no longer exists (last use removed) changes the filter.
             if (_filtersReady && TagList.SelectedItems.Count != selectedNames.Count)
-                await ApplyFilterAsync();
+                await ApplyMediaListFilterAsync();
         }
 
         // ------------------------------------------------------------------
@@ -743,7 +747,7 @@ namespace PhotoTagger
                 {
                     Task.Delay(secondsTimeout * 1000).Wait();
                 });
-                
+
                 StatusText.Text = default;
             }
         }
