@@ -149,6 +149,8 @@ namespace PhotoTagger
 
         private async Task ScanAsync(List<string> roots)
         {
+            if (!_filtersReady) return;
+
             _scanning = true;
             AddFolderButton.IsEnabled = false;
             RescanButton.IsEnabled = false;
@@ -178,10 +180,12 @@ namespace PhotoTagger
 
                     UpdateStatusText($"Scanning {root} ...");
                     ScanProgress.IsIndeterminate = true;
+                    bool searchSubdirectories = SearchSubdirectoriesToggle.IsOn == true;
 
+                    // TODO - Review
                     SyncResult result = await Task.Run(() =>
                     {
-                        var files = _scanner.Scan(root);
+                        var files = _scanner.Scan(root, searchSubdirectories);
                         return _repo.SyncRoot(root, files, progress);
                     });
 
@@ -242,16 +246,14 @@ namespace PhotoTagger
             await ApplyMediaListFilterAsync();
         }
 
-        // ------------------------------------------------------------------
-        // Filtering
-        // ------------------------------------------------------------------
-
+        #region Filtering
         private MediaFilter BuildFilter()
         {
             MediaKind? kind = KindFilter.SelectedIndex switch
             {
                 1 => MediaKind.Image,
                 2 => MediaKind.Video,
+                3 => MediaKind.Folder,
                 _ => null
             };
 
@@ -273,28 +275,18 @@ namespace PhotoTagger
 
             try
             {
-                if (folders)
-                {
-                    List<FolderItem> items = await Task.Run(() => _repo.QueryFolders(filter));
-                    if (version != _filterVersion) return;   // a newer filter change superseded this one
+                List<MediaItem> items = await Task.Run(() => _repo.Query(filter));
+                if (version != _filterVersion) return;
 
-                    FolderGrid.ItemsSource = items;
-                    CountText.Text = $"{items.Count:N0} folder(s)";
-                }
-                else
-                {
-                    List<MediaItem> items = await Task.Run(() => _repo.Query(filter));
-                    if (version != _filterVersion) return;
-
-                    MediaGrid.ItemsSource = items;
-                    CountText.Text = $"{items.Count:N0} item(s)";
-                }
+                MediaGrid.ItemsSource = items;
+                CountText.Text = $"{items.Count:N0} item(s)";
             }
             catch (Exception ex)
             {
                 PopupMessage(true, "Media Filter error: " + ex.Message);
             }
         }
+        #endregion
 
         private void SearchFileNameBox_TextChanged(object sender, TextChangedEventArgs e)
         {
@@ -314,13 +306,34 @@ namespace PhotoTagger
             _ = ApplyMediaListFilterAsync();
         }
 
-        private void FilterToggle_Changed(object sender, RoutedEventArgs e)
+        private void FilterTagToggle_Changed(object sender, RoutedEventArgs e)
         {
             if (!_filtersReady) return;
 
             // "Untagged only" and a tag selection contradict each other, so disable the list.
             TagList.IsEnabled = UntaggedOnly.IsChecked != true;
             _ = ApplyMediaListFilterAsync();
+        }
+
+        private async void SearchSubdirectoriesToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_scanning) return;
+
+            try
+            {
+                var roots = await Task.Run(() => _repo.GetRoots());
+                if (roots.Count == 0)
+                {
+                    UpdateStatusText("No folders yet. Click \"Add Folder\" first.");
+                    return;
+                }
+
+                await ScanAsync(roots);
+            }
+            catch (Exception ex)
+            {
+                PopupMessage(true, "Rescan error: " + ex.Message);
+            }
         }
 
         private void TagList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -544,62 +557,62 @@ namespace PhotoTagger
             }
         }
 
-        // ------------------------------------------------------------------
-        // Selection and preview: folders (open the first item, then prev/next)
-        // ------------------------------------------------------------------
+        //// ------------------------------------------------------------------
+        //// Selection and preview: folders (open the first item, then prev/next)
+        //// ------------------------------------------------------------------
 
-        private async void FolderGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (!FolderMode) return;   // the hidden grid is being cleared; ignore it
+        //private async void FolderGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        //{
+        //    if (!FolderMode) return;   // the hidden grid is being cleared; ignore it
 
-            ResetPreview();
-            int version = _selectionVersion;
+        //    ResetPreview();
+        //    int version = _selectionVersion;
 
-            var selected = FolderGrid.SelectedItems.OfType<FolderItem>().ToList();
-            TagEditorContainer.IsEnabled = selected.Count > 0;
+        //    var selected = FolderGrid.SelectedItems.OfType<FolderItem>().ToList();
+        //    TagEditorContainer.IsEnabled = selected.Count > 0;
 
-            if (selected.Count == 0)
-                return;
+        //    if (selected.Count == 0)
+        //        return;
 
-            if (selected.Count > 1)
-            {
-                PreviewFileName.Text = $"{selected.Count} folders selected";
-                SelectionHint.Text = "A tag you add is applied to all selected folders.";
-                return;
-            }
+        //    if (selected.Count > 1)
+        //    {
+        //        PreviewFileName.Text = $"{selected.Count} folders selected";
+        //        SelectionHint.Text = "A tag you add is applied to all selected folders.";
+        //        return;
+        //    }
 
-            FolderItem folder = selected[0];
-            PreviewFileName.Text = folder.Name;
-            PreviewFilePath.Text = folder.FolderPath;
-            SelectionHint.Text = string.Empty;
+        //    FolderItem folder = selected[0];
+        //    PreviewFileName.Text = folder.Name;
+        //    PreviewFilePath.Text = folder.FolderPath;
+        //    SelectionHint.Text = string.Empty;
 
-            try
-            {
-                var tags = await Task.Run(() => _repo.GetTags(TagTarget.Folder, folder.Id));
-                var media = await Task.Run(() => _repo.GetFolderMedia(folder.Id));
-                if (version != _selectionVersion) return;
+        //    try
+        //    {
+        //        var tags = await Task.Run(() => _repo.GetTags(TagTarget.Folder, folder.Id));
+        //        var media = await Task.Run(() => _repo.GetFolderMedia(folder.Id));
+        //        if (version != _selectionVersion) return;
 
-                foreach (string tag in tags)
-                    _currentTags.Add(tag);
+        //        foreach (string tag in tags)
+        //            _currentTags.Add(tag);
 
-                _folderMedia = media;
+        //        _folderMedia = media;
 
-                if (media.Count > 0)
-                    await ShowFolderIndexAsync(0, version);
-            }
-            catch (Exception ex)
-            {
-                PopupMessage(true, "Could not open folder: " + ex.Message);
-            }
-        }
+        //        if (media.Count > 0)
+        //            await ShowFolderIndexAsync(0, version);
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        PopupMessage(true, "Could not open folder: " + ex.Message);
+        //    }
+        //}
 
-        private async Task ShowFolderIndexAsync(int index, int version)
-        {
-            _folderIndex = index;
-            UpdateNavigation();
+        //private async Task ShowFolderIndexAsync(int index, int version)
+        //{
+        //    _folderIndex = index;
+        //    UpdateNavigation();
 
-            await ShowPreviewAsync(_folderMedia[index], version);
-        }
+        //    await ShowPreviewAsync(_folderMedia[index], version);
+        //}
 
         private void UpdateNavigation()
         {
@@ -620,7 +633,7 @@ namespace PhotoTagger
             if (newIndex < 0 || newIndex >= _folderMedia.Count) return;
 
             int version = ++_selectionVersion;   // supersedes any preview still loading
-            await ShowFolderIndexAsync(newIndex, version);
+            //await ShowFolderIndexAsync(newIndex, version); // TODO - Fix
         }
 
         private async void PrevButton_Click(object sender, RoutedEventArgs e) => await NavigateAsync(-1);
@@ -631,10 +644,7 @@ namespace PhotoTagger
         // Tagging (files or folders, depending on the browse mode)
         // ------------------------------------------------------------------
 
-        private List<long> GetSelectedIds() =>
-            FolderMode
-                ? FolderGrid.SelectedItems.OfType<FolderItem>().Select(f => f.Id).ToList()
-                : MediaGrid.SelectedItems.OfType<MediaItem>().Select(i => i.Id).ToList();
+        private List<long> GetSelectedIds() => MediaGrid.SelectedItems.OfType<MediaItem>().Select(i => i.Id).ToList();
 
         private long? GetSingleSelectedId()
         {

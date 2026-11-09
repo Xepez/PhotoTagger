@@ -20,28 +20,25 @@ public sealed record SyncResult(int Added, int Moved, int Updated, int MarkedMis
 /// </summary>
 public sealed class MediaRepository
 {
-    private const int MaxTagLength = 64;
+    #region Variables
 
-    // A folder is "missing" when none of its files were found on the last scan.
-    internal const string RecomputeFolderMissingSql =
-        "UPDATE folders SET missing = CASE WHEN EXISTS " +
-        "(SELECT 1 FROM media m WHERE m.folder_id = folders.id AND m.missing = 0) THEN 0 ELSE 1 END";
+    private const int MaxTagLength = 64;
 
     private readonly MediaDatabase _db;
 
     public MediaRepository(MediaDatabase db) => _db = db;
+
+    #endregion
 
     // ------------------------------------------------------------------
     // Paths
     // ------------------------------------------------------------------
 
     // "C:\Photos" -> "C:\Photos\" so prefix matching can't confuse C:\Photos with C:\Photos2.
-    private static string NormalizeRoot(string path) =>
-        Path.GetFullPath(path).TrimEnd('\\', '/') + "\\";
+    private static string NormalizeRoot(string path) => Path.GetFullPath(path).TrimEnd('\\', '/') + "\\";
 
     /// <summary>The directory a file lives in, without a trailing slash (this is how folders are keyed).</summary>
-    internal static string FolderPathOf(string filePath) =>
-        (Path.GetDirectoryName(filePath) ?? string.Empty).TrimEnd('\\', '/');
+    internal static string FolderPathOf(string filePath) => (Path.GetDirectoryName(filePath) ?? string.Empty).TrimEnd('\\', '/');
 
     internal static string FolderNameOf(string folderPath)
     {
@@ -49,9 +46,30 @@ public sealed class MediaRepository
         return name.Length > 0 ? name : folderPath;   // drive roots have no name
     }
 
-    // ------------------------------------------------------------------
-    // Library folders (scan roots)
-    // ------------------------------------------------------------------
+    #region SQL Commands
+
+    private static SqliteCommand Cmd(SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
+    {
+        var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+
+        foreach (var (name, value) in parameters)
+            cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
+
+        return cmd;
+    }
+
+    private static void Exec(
+        SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
+    {
+        using var cmd = Cmd(conn, tx, sql, parameters);
+        cmd.ExecuteNonQuery();
+    }
+
+    #endregion
+
+    #region Root Folder
 
     public List<string> GetRoots()
     {
@@ -60,27 +78,28 @@ public sealed class MediaRepository
         using var r = cmd.ExecuteReader();
 
         var roots = new List<string>();
-        while (r.Read()) roots.Add(r.GetString(0));
+        while (r.Read())
+            roots.Add(r.GetString(0));
+
         return roots;
     }
 
     public void AddRoot(string path)
     {
         using var conn = _db.Open();
-        Exec(conn, null, "INSERT OR IGNORE INTO library_roots(path) VALUES (@p)", ("@p", NormalizeRoot(path)));
+        Exec(conn, null, "INSERT OR IGNORE INTO library_roots(path) VALUES (@path)", ("@path", NormalizeRoot(path)));
     }
+
+    #endregion
 
     // ------------------------------------------------------------------
     // Sync (scan results -> database)
     // ------------------------------------------------------------------
 
-    private sealed record ExistingRow(long Id, long Size, long Modified, bool Missing);
+    private sealed record ExistingRow(long Id, MediaKind Kind, long Size, long Modified, bool Missing);
     private sealed record RelinkCandidate(long MediaId, long? FolderId);
 
-    public SyncResult SyncRoot(
-        string root,
-        IReadOnlyList<ScannedFile> files,
-        IProgress<(int Done, int Total)>? progress = null)
+    public SyncResult SyncRoot(string root, IReadOnlyList<ScannedFile> files, IProgress<(int Done, int Total)>? progress = null)
     {
         root = NormalizeRoot(root);
         string rootDir = root.TrimEnd('\\');
@@ -89,78 +108,17 @@ public sealed class MediaRepository
         using var conn = _db.Open();
         using var tx = conn.BeginTransaction();
 
-        // 1a. What files do we already know under this root?
+        // Get existing files
         var existing = new Dictionary<string, ExistingRow>(StringComparer.OrdinalIgnoreCase);
         using (var cmd = Cmd(conn, tx,
-            "SELECT id, path, size_bytes, modified_utc, missing FROM media " +
-            "WHERE substr(path, 1, @len) = @root COLLATE NOCASE",
+            @"SELECT id, path, kind, size_bytes, modified_utc, missing
+            FROM media
+            WHERE substr(path, 1, @len) = @root COLLATE NOCASE",
             ("@len", root.Length), ("@root", root)))
         using (var r = cmd.ExecuteReader())
         {
             while (r.Read())
-                existing[r.GetString(1)] = new ExistingRow(r.GetInt64(0), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4) != 0);
-        }
-
-        // 1b. ...and what folders?
-        var folderIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        using (var cmd = Cmd(conn, tx,
-            "SELECT id, path FROM folders WHERE path = @rootDir OR substr(path, 1, @len) = @root COLLATE NOCASE",
-            ("@rootDir", rootDir), ("@len", root.Length), ("@root", root)))
-        using (var r = cmd.ExecuteReader())
-        {
-            while (r.Read())
-                folderIds[r.GetString(1)] = r.GetInt64(0);
-        }
-
-        // Finds (or creates) the folder row for a file's directory.
-        // previousFolderId: set when the file was re-linked from somewhere else. If that old folder
-        // no longer exists on disk, the whole folder was most likely renamed or moved, so we re-use
-        // its row (and therefore its tags) instead of creating a new, untagged one.
-        long ResolveFolder(string filePath, long? previousFolderId)
-        {
-            string dir = FolderPathOf(filePath);
-
-            if (folderIds.TryGetValue(dir, out long known))
-                return known;
-
-            // Safety net: a row for this path might exist outside what we loaded.
-            using (var find = Cmd(conn, tx, "SELECT id FROM folders WHERE path = @p", ("@p", dir)))
-            {
-                object? found = find.ExecuteScalar();
-                if (found != null)
-                {
-                    long foundId = Convert.ToInt64(found);
-                    folderIds[dir] = foundId;
-                    return foundId;
-                }
-            }
-
-            if (previousFolderId is long oldId)
-            {
-                string? oldPath;
-                using (var cmd = Cmd(conn, tx, "SELECT path FROM folders WHERE id = @id", ("@id", oldId)))
-                    oldPath = cmd.ExecuteScalar() as string;
-
-                if (oldPath != null && !Directory.Exists(oldPath))
-                {
-                    Exec(conn, tx, "UPDATE folders SET path = @p, name = @n WHERE id = @id",
-                        ("@p", dir), ("@n", FolderNameOf(dir)), ("@id", oldId));
-
-                    folderIds.Remove(oldPath);
-                    folderIds[dir] = oldId;
-                    return oldId;
-                }
-            }
-
-            Exec(conn, tx, "INSERT INTO folders(path, name, missing) VALUES (@p, @n, 0)",
-                ("@p", dir), ("@n", FolderNameOf(dir)));
-
-            long newId;
-            using (var cmd = Cmd(conn, tx, "SELECT last_insert_rowid()"))
-                newId = Convert.ToInt64(cmd.ExecuteScalar());
-
-            folderIds[dir] = newId;
-            return newId;
+                existing[r.GetString(1)] = new ExistingRow(r.GetInt64(0), (MediaKind)r.GetInt32(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5) != 0);
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -177,7 +135,7 @@ public sealed class MediaRepository
             {
                 if (existing.TryGetValue(file.Path, out var row))
                 {
-                    if (row.Size == file.SizeBytes && row.Modified == file.ModifiedUtcTicks)
+                    if ((row.Kind != MediaKind.Folder && row.Size == file.SizeBytes) && row.Modified == file.ModifiedUtcTicks)
                     {
                         if (row.Missing)
                             Exec(conn, tx, "UPDATE media SET missing = 0 WHERE id = @id", ("@id", row.Id));
@@ -186,40 +144,39 @@ public sealed class MediaRepository
                     {
                         // Same path, different content (edited photo). Keep the row, so tags stay.
                         string fp = MediaScanner.ComputeFingerprint(file.Path);
-                        Exec(conn, tx,
-                            "UPDATE media SET size_bytes=@s, modified_utc=@m, fingerprint=@fp, missing=0 WHERE id=@id",
-                            ("@s", file.SizeBytes), ("@m", file.ModifiedUtcTicks), ("@fp", fp), ("@id", row.Id));
+                        Exec(conn, tx, @"
+                            UPDATE media
+                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, missing = 0
+                            WHERE id = @id",
+                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtcTicks), ("@fingerprint", fp), ("@id", row.Id));
                         updated++;
                     }
                 }
                 else
                 {
+                    // TODO - Review from here ---------------------------------------------------------------------------------------------------------------------------------
                     string fp = MediaScanner.ComputeFingerprint(file.Path);
                     RelinkCandidate? candidate = FindRelinkCandidate(conn, tx, fp, file.SizeBytes, file.Path);
 
                     if (candidate != null)
                     {
-                        // Same content as a row whose file is gone: it was moved/renamed. Keep its tags.
-                        long folderId = ResolveFolder(file.Path, candidate.FolderId);
-
-                        Exec(conn, tx,
-                            "UPDATE media SET path=@p, file_name=@n, modified_utc=@m, folder_id=@f, missing=0 WHERE id=@id",
+                        Exec(conn, tx, @"
+                            UPDATE media 
+                            SET path=@p, name=@n, modified_utc=@m, missing=0 
+                            WHERE id=@id",
                             ("@p", file.Path), ("@n", Path.GetFileName(file.Path)),
-                            ("@m", file.ModifiedUtcTicks), ("@f", folderId), ("@id", candidate.MediaId));
+                            ("@m", file.ModifiedUtcTicks), ("@id", candidate.MediaId));
 
                         claimedIds.Add(candidate.MediaId);
                         moved++;
                     }
                     else
                     {
-                        long folderId = ResolveFolder(file.Path, null);
-
                         Exec(conn, tx,
-                            "INSERT INTO media (path, file_name, kind, size_bytes, modified_utc, fingerprint, folder_id, added_utc) " +
-                            "VALUES (@p, @n, @k, @s, @m, @fp, @f, @a)",
-                            ("@p", file.Path), ("@n", Path.GetFileName(file.Path)), ("@k", (int)file.Kind),
-                            ("@s", file.SizeBytes), ("@m", file.ModifiedUtcTicks), ("@fp", fp),
-                            ("@f", folderId), ("@a", now));
+                            "INSERT INTO media (path, name, kind, size_bytes, modified_utc, fingerprint, added_utc) " +
+                            "VALUES (@path, @name, @kind, @size_bytes, @modified_utc, @fingerprint, @added_utc)",
+                            ("@path", file.Path), ("@name", Path.GetFileName(file.Path)), ("@kind", (int)file.Kind),
+                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtcTicks), ("@fingerprint", fp), ("@added_utc", now));
                         added++;
                     }
                 }
@@ -240,17 +197,13 @@ public sealed class MediaRepository
             missing++;
         }
 
-        // 4. Folders follow their files: no files found = folder flagged missing (tags kept).
-        Exec(conn, tx, RecomputeFolderMissingSql);
-
         tx.Commit();
         return new SyncResult(added, moved, updated, missing, unreadable);
     }
 
     // A row with identical content whose file no longer exists at its recorded path.
     // (A row whose file still exists is a genuine copy and gets its own, separately tagged row.)
-    private static RelinkCandidate? FindRelinkCandidate(
-        SqliteConnection conn, SqliteTransaction tx, string fingerprint, long size, string newPath)
+    private static RelinkCandidate? FindRelinkCandidate(SqliteConnection conn, SqliteTransaction tx, string fingerprint, long size, string newPath)
     {
         using var cmd = Cmd(conn, tx,
             "SELECT id, path, missing, folder_id FROM media WHERE fingerprint = @fp AND size_bytes = @s AND path <> @p",
@@ -284,7 +237,7 @@ public sealed class MediaRepository
 
         if (!string.IsNullOrWhiteSpace(filter.Text))
         {
-            sql.Append(" AND m.file_name LIKE @text ESCAPE '\\'");
+            sql.Append(" AND m.name LIKE @text ESCAPE '\\'");
             ps.Add(("@text", "%" + EscapeLike(filter.Text.Trim()) + "%"));
         }
 
@@ -300,70 +253,6 @@ public sealed class MediaRepository
         while (r.Read())
             items.Add(new MediaItem(r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2)));
 
-        return items;
-    }
-
-    // ------------------------------------------------------------------
-    // Filtering: folders
-    // ------------------------------------------------------------------
-
-    /// <summary>
-    /// Folders that directly contain photos/videos. Text matches anywhere in the folder path,
-    /// so typing a parent folder's name lists its subfolders too. The cover is the folder's first
-    /// item in Explorer order.
-    /// </summary>
-    public List<FolderItem> QueryFolders(MediaFilter filter)
-    {
-        var sql = new StringBuilder(
-            "SELECT f.id, f.path, f.name, " +
-            "(SELECT COUNT(*) FROM media m WHERE m.folder_id = f.id AND m.missing = 0), " +
-            "(SELECT m.path FROM media m WHERE m.folder_id = f.id AND m.missing = 0 ORDER BY m.file_name COLLATE EXPLORER_ORDER LIMIT 1), " +
-            "(SELECT m.kind FROM media m WHERE m.folder_id = f.id AND m.missing = 0 ORDER BY m.file_name COLLATE EXPLORER_ORDER LIMIT 1) " +
-            "FROM folders f WHERE f.missing = 0");
-        var ps = new List<(string, object?)>();
-
-        if (!string.IsNullOrWhiteSpace(filter.Text))
-        {
-            sql.Append(" AND f.path LIKE @text ESCAPE '\\'");
-            ps.Add(("@text", "%" + EscapeLike(filter.Text.Trim()) + "%"));
-        }
-
-        AppendTagFilter(sql, ps, filter, "f.id", "folder_tags", "folder_id");
-
-        sql.Append(" ORDER BY f.path COLLATE EXPLORER_ORDER");
-
-        using var conn = _db.Open();
-        using var cmd = Cmd(conn, null, sql.ToString(), ps.ToArray());
-        using var r = cmd.ExecuteReader();
-
-        var folders = new List<FolderItem>();
-        while (r.Read())
-        {
-            folders.Add(new FolderItem(
-                r.GetInt64(0),
-                r.GetString(1),
-                r.GetString(2),
-                r.GetInt32(3),
-                r.IsDBNull(4) ? null : r.GetString(4),
-                r.IsDBNull(5) ? MediaKind.Image : (MediaKind)r.GetInt32(5)));
-        }
-
-        return folders;
-    }
-
-    /// <summary>The files directly inside a folder, in Explorer order. Used for prev/next browsing.</summary>
-    public List<MediaItem> GetFolderMedia(long folderId)
-    {
-        using var conn = _db.Open();
-        using var cmd = Cmd(conn, null,
-            "SELECT m.id, m.path, m.kind FROM media m " +
-            "WHERE m.folder_id = @f AND m.missing = 0 ORDER BY m.file_name COLLATE EXPLORER_ORDER",
-            ("@f", folderId));
-        using var r = cmd.ExecuteReader();
-
-        var items = new List<MediaItem>();
-        while (r.Read())
-            items.Add(new MediaItem(r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2)));
         return items;
     }
 
@@ -411,10 +300,7 @@ public sealed class MediaRepository
     // Tags (shared by files and folders)
     // ------------------------------------------------------------------
 
-    private static (string Table, string Column, string Parent) Link(TagTarget target) =>
-        target == TagTarget.Folder
-            ? ("folder_tags", "folder_id", "folders")
-            : ("media_tags", "media_id", "media");
+    private static (string Table, string Column, string Parent) Link(TagTarget target) => ("media_tags", "media_id", "media");
 
     /// <summary>Trims, collapses inner whitespace, caps the length. Commas and symbols are fine.</summary>
     public static string NormalizeTag(string? raw)
@@ -531,28 +417,5 @@ public sealed class MediaRepository
             ("@n", tag));
 
         tx.Commit();
-    }
-
-    // ------------------------------------------------------------------
-    // Small ADO.NET helpers
-    // ------------------------------------------------------------------
-
-    private static SqliteCommand Cmd(SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
-    {
-        var cmd = conn.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText = sql;
-
-        foreach (var (name, value) in parameters)
-            cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
-
-        return cmd;
-    }
-
-    private static void Exec(
-        SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
-    {
-        using var cmd = Cmd(conn, tx, sql, parameters);
-        cmd.ExecuteNonQuery();
     }
 }

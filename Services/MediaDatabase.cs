@@ -11,11 +11,17 @@ namespace PhotoTagger.Services;
 /// </summary>
 public sealed class MediaDatabase
 {
-    private const int SchemaVersion = 2;
+    #region Variables
+
+    private const int SchemaVersion = 1;
 
     private readonly string _connectionString;
 
     public string DbPath { get; }
+
+    #endregion
+
+    #region Initialize
 
     public MediaDatabase(string? dbPath = null)
     {
@@ -40,6 +46,8 @@ public sealed class MediaDatabase
         var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
+        // TODO - Review if this is ok and needed
+
         // Explorer-style ordering (IMG_2 before IMG_10). Registered per connection and used only
         // in ORDER BY. Never use it in an index or table definition, or other tools
         // (DB Browser, an Android app) couldn't read the file.
@@ -47,10 +55,6 @@ public sealed class MediaDatabase
 
         return connection;
     }
-
-    // ------------------------------------------------------------------
-    // Schema and upgrades
-    // ------------------------------------------------------------------
 
     private void Initialize()
     {
@@ -80,6 +84,10 @@ public sealed class MediaDatabase
         if (version < 1) CreateDB(conn);
     }
 
+    #endregion
+
+    #region Database
+
     private static void CreateDB(SqliteConnection conn)
     {
         using var tx = conn.BeginTransaction();
@@ -89,19 +97,16 @@ public sealed class MediaDatabase
             CREATE TABLE media (
                 id           INTEGER PRIMARY KEY,
                 path         TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-                file_name    TEXT    NOT NULL,
+                name         TEXT    NOT NULL,
                 kind         INTEGER NOT NULL,            -- 0 = image, 1 = video
                 size_bytes   INTEGER NOT NULL,
                 modified_utc INTEGER NOT NULL,            -- DateTime ticks (UTC)
                 fingerprint  TEXT    NOT NULL,            -- size + head/tail hash; survives moves/renames
                 missing      INTEGER NOT NULL DEFAULT 0,  -- 1 = not found on last scan (tags are kept)
-                added_utc    INTEGER NOT NULL,
-                isFolder     BIT     NOT NULL DEFAULT 0,
-                folder_id INTEGER REFERENCES folders(id)
+                added_utc    INTEGER NOT NULL
             );
             CREATE INDEX idx_media_fingerprint ON media(fingerprint, size_bytes);
             CREATE INDEX idx_media_kind ON media(kind);
-            CREATE INDEX idx_media_folder ON media(folder_id);
 
             CREATE TABLE tags (
                 id   INTEGER PRIMARY KEY,
@@ -119,20 +124,6 @@ public sealed class MediaDatabase
                 path TEXT PRIMARY KEY COLLATE NOCASE
             );
 
-            CREATE TABLE folders (
-                id      INTEGER PRIMARY KEY,
-                path    TEXT    NOT NULL UNIQUE COLLATE NOCASE,   -- full directory path, no trailing slash
-                name    TEXT    NOT NULL,
-                missing INTEGER NOT NULL DEFAULT 0                -- 1 = no photos/videos found in it on last scan (tags kept)
-            );
-
-            CREATE TABLE folder_tags (
-                folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
-                tag_id    INTEGER NOT NULL REFERENCES tags(id)    ON DELETE CASCADE,
-                PRIMARY KEY (folder_id, tag_id)
-            ) WITHOUT ROWID;
-            CREATE INDEX idx_folder_tags_tag ON folder_tags(tag_id, folder_id);
-
             PRAGMA user_version = 1;
         ";
 
@@ -140,26 +131,9 @@ public sealed class MediaDatabase
         tx.Commit();
     }
 
-    // ------------------------------------------------------------------
-    // Backups
-    // ------------------------------------------------------------------
+    #endregion
 
-    private void BackupBeforeUpgrade(long fromVersion)
-    {
-        string name = $"premigration-from-v{fromVersion}-{DateTime.Now:yyyyMMdd-HHmmss}.db";
-
-        try
-        {
-            string dir = BackupDirectory();
-            Backup(Path.Combine(dir, name));
-        }
-        catch
-        {
-            // Documents unavailable: keep the safety copy next to the database instead.
-            // If even that fails the exception stops the upgrade, which is the safe outcome.
-            Backup(Path.Combine(Path.GetDirectoryName(DbPath)!, name));
-        }
-    }
+    #region Backups
 
     private static string BackupDirectory()
     {
@@ -214,4 +188,23 @@ public sealed class MediaDatabase
 
         return file;
     }
+
+    private void BackupBeforeUpgrade(long fromVersion)
+    {
+        string name = $"premigration-from-v{fromVersion}-{DateTime.Now:yyyyMMdd-HHmmss}.db";
+
+        try
+        {
+            string dir = BackupDirectory();
+            Backup(Path.Combine(dir, name));
+        }
+        catch
+        {
+            // Documents unavailable: keep the safety copy next to the database instead.
+            // If even that fails the exception stops the upgrade, which is the safe outcome.
+            Backup(Path.Combine(Path.GetDirectoryName(DbPath)!, name));
+        }
+    }
+
+    #endregion
 }

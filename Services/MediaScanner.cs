@@ -22,11 +22,15 @@ public class MediaScanner
 
     public List<ScannedFile> Scan(string folderPath, bool searchSubdirectories = false)
     {
-        // Skips folders we aren't allowed to read instead of throwing.
-        // Default options also skip hidden/system entries (e.g. $RECYCLE.BIN).
+        // Currently only interested in going one layer deep and displaying folders from the subfolders.
+        int maxRecursionDepth = 0;
+        if (searchSubdirectories)
+            maxRecursionDepth = 1;
+
         var options = new EnumerationOptions
         {
             RecurseSubdirectories = searchSubdirectories,
+            MaxRecursionDepth = maxRecursionDepth,
             IgnoreInaccessible = true
         };
 
@@ -57,7 +61,7 @@ public class MediaScanner
     {
         const int Chunk = 64 * 1024;
 
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read); // Do I need this as fourth variable? - , FileShare.ReadWrite | FileShare.Delete
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
         long length = stream.Length;

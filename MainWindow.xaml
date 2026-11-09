@@ -105,6 +105,15 @@
                         <ComboBoxItem Content="Folders only" />
                     </ComboBox>
 
+                    <ToggleSwitch
+                            x:Name="SearchSubdirectoriesToggle"
+                            MinWidth="0"
+                            VerticalAlignment="Center"
+                            IsOn="False"
+                            OnContent="Include Subdirectories"
+                            OffContent="Current Directory"
+                            Toggled="SearchSubdirectoriesToggle_Changed" />
+
                 </StackPanel>
 
                 <!-- Tag Filters -->
@@ -151,8 +160,8 @@
                             Content="Untagged Only"
                             MinWidth="0"
                             VerticalAlignment="Center"
-                            Checked="FilterToggle_Changed"
-                            Unchecked="FilterToggle_Changed" />
+                            Checked="FilterTagToggle_Changed"
+                            Unchecked="FilterTagToggle_Changed" />
 
                         <ToggleSwitch
                             x:Name="MatchAllToggle"
@@ -162,7 +171,7 @@
                             IsOn="True"
                             OnContent="ALL tags"
                             OffContent="ANY tags"
-                            Toggled="FilterToggle_Changed" />
+                            Toggled="FilterTagToggle_Changed" />
 
                     </Grid>
 
@@ -224,7 +233,7 @@
             </GridView>
 
             <!-- Folder grid (shares the same cell; code shows one grid at a time) -->
-            <GridView
+            <!-- <GridView
                 x:Name="FolderGrid"
                 Grid.Column="1"
                 SelectionMode="Extended"
@@ -275,7 +284,7 @@
                     </DataTemplate>
                 </GridView.ItemTemplate>
 
-            </GridView>
+            </GridView> -->
 
             <!-- Preview + Tag Editor -->
             <Border

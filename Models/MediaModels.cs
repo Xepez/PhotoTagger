@@ -40,7 +40,9 @@ public class MediaItem : INotifyPropertyChanged, IThumbnailItem
 
     public string FileName => Path.GetFileName(FilePath);
     public bool IsVideo => Kind == MediaKind.Video;
+    public bool IsFolder => Kind == MediaKind.Folder;
     public Visibility VideoBadgeVisibility => IsVideo ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility FolderBadgeVisibility => IsFolder ? Visibility.Visible : Visibility.Collapsed;
 
     string? IThumbnailItem.ThumbnailSourcePath => FilePath;
     MediaKind IThumbnailItem.ThumbnailKind => Kind;
@@ -71,58 +73,6 @@ public class MediaItem : INotifyPropertyChanged, IThumbnailItem
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-}
-
-/// <summary>A folder that directly contains photos/videos. Its thumbnail is its first item.</summary>
-public class FolderItem : INotifyPropertyChanged, IThumbnailItem
-{
-    public long Id { get; }
-    public string FolderPath { get; }
-    public string Name { get; }
-    public int ItemCount { get; }
-    public string? CoverPath { get; }
-    public MediaKind CoverKind { get; }
-
-    public string Subtitle
-    {
-        get
-        {
-            string parent = Path.GetFileName(Path.GetDirectoryName(FolderPath) ?? string.Empty);
-            string count = $"{ItemCount:N0} item{(ItemCount == 1 ? "" : "s")}";
-            return parent.Length > 0 ? $"{count} · {parent}" : count;
-        }
-    }
-
-    string? IThumbnailItem.ThumbnailSourcePath => CoverPath;
-    MediaKind IThumbnailItem.ThumbnailKind => CoverKind;
-
-    public bool IsLoadingThumbnail { get; set; }
-
-    private BitmapImage? _thumbnail;
-    public BitmapImage? Thumbnail
-    {
-        get => _thumbnail;
-        set
-        {
-            if (_thumbnail == value) return;
-            _thumbnail = value;
-            OnPropertyChanged();
-        }
-    }
-
-    public FolderItem(long id, string folderPath, string name, int itemCount, string? coverPath, MediaKind coverKind)
-    {
-        Id = id;
-        FolderPath = folderPath;
-        Name = name;
-        ItemCount = itemCount;
-        CoverPath = coverPath;
-        CoverKind = coverKind;
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    private void OnPropertyChanged([CallerMemberName] string? propertyName = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
 
 /// <summary>A tag and how many items (or folders) use it. Shown in the filter sidebar.</summary>
