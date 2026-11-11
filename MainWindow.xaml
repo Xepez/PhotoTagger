@@ -77,16 +77,6 @@
                 <!-- File and Type Filtering -->
                 <StackPanel Grid.Row="0" Spacing="8">
 
-                    <RadioButtons
-                        x:Name="ViewModeSelector"
-                        Header="Browse"
-                        MaxColumns="2"
-                        SelectedIndex="0"
-                        SelectionChanged="ViewModeSelector_SelectionChanged">
-                        <x:String>Photos &amp; videos</x:String>
-                        <x:String>Folders</x:String>
-                    </RadioButtons>
-
                     <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
 
                     <TextBox
@@ -231,60 +221,6 @@
                 </GridView.ItemTemplate>
 
             </GridView>
-
-            <!-- Folder grid (shares the same cell; code shows one grid at a time) -->
-            <!-- <GridView
-                x:Name="FolderGrid"
-                Grid.Column="1"
-                SelectionMode="Extended"
-                Visibility="Collapsed"
-                SelectionChanged="FolderGrid_SelectionChanged">
-
-                <GridView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Width="180" Margin="6">
-
-                            <Border
-                                Width="180"
-                                Height="140"
-                                CornerRadius="4"
-                                Background="{ThemeResource LayerFillColorDefaultBrush}">
-
-                                <Grid>
-                                    <Image
-                                        Source="{Binding Thumbnail}"
-                                        Stretch="UniformToFill" />
-
-                                    <FontIcon
-                                        Glyph="&#xE8B7;"
-                                        FontSize="16"
-                                        Margin="6"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Top" />
-                                </Grid>
-
-                            </Border>
-
-                            <TextBlock
-                                Text="{Binding Name}"
-                                FontWeight="SemiBold"
-                                HorizontalAlignment="Center"
-                                TextTrimming="CharacterEllipsis"
-                                Margin="4,6,4,0" />
-
-                            <TextBlock
-                                Text="{Binding Subtitle}"
-                                FontSize="12"
-                                Opacity="0.7"
-                                HorizontalAlignment="Center"
-                                TextTrimming="CharacterEllipsis"
-                                Margin="4,0,4,0" />
-
-                        </StackPanel>
-                    </DataTemplate>
-                </GridView.ItemTemplate>
-
-            </GridView> -->
 
             <!-- Preview + Tag Editor -->
             <Border

@@ -16,13 +16,13 @@ namespace PhotoTagger.Services;
 /// </summary>
 public class ThumbnailService
 {
-    public async Task<BitmapImage?> GetThumbnailAsync(string filePath, MediaKind kind)
+    public async Task<BitmapImage?> GetThumbnailAsync(string filePath, MediaKind mediaKind)
     {
         try
         {
             StorageFile file = await StorageFile.GetFileFromPathAsync(filePath);
 
-            ThumbnailMode mode = kind == MediaKind.Video
+            ThumbnailMode mode = mediaKind == MediaKind.Video
                 ? ThumbnailMode.VideosView
                 : ThumbnailMode.PicturesView;
 

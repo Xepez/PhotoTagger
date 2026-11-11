@@ -2,22 +2,24 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace PhotoTagger.Services;
 
-public sealed record ScannedFile(string Path, MediaKind Kind, long SizeBytes, long ModifiedUtcTicks);
+public sealed record ScannedFile(string Path, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, string? FolderPath);
 
 public class MediaScanner
 {
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp"
+        ".gif", ".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".bmp"
     };
 
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".gif", ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".mkv", ".webm", ".3gp"
+        ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".mkv", ".webm", ".3gp"
     };
 
     public List<ScannedFile> Scan(string folderPath, bool searchSubdirectories = false)
@@ -27,25 +29,47 @@ public class MediaScanner
         if (searchSubdirectories)
             maxRecursionDepth = 1;
 
-        var options = new EnumerationOptions
+        EnumerationOptions options = new()
         {
             RecurseSubdirectories = searchSubdirectories,
             MaxRecursionDepth = maxRecursionDepth,
             IgnoreInaccessible = true
         };
+        List<ScannedFile> results = new();
 
-        var results = new List<ScannedFile>();
-
-        foreach (var file in new DirectoryInfo(folderPath).EnumerateFiles("*", options))
+        foreach (FileInfo file in new DirectoryInfo(folderPath).EnumerateFiles("*", options))
         {
             string ext = file.Extension;
 
-            MediaKind kind;
-            if (ImageExtensions.Contains(ext)) kind = MediaKind.Image;
-            else if (VideoExtensions.Contains(ext)) kind = MediaKind.Video;
+            MediaKind mediaKind;
+            if (ImageExtensions.Contains(ext)) mediaKind = MediaKind.Image;
+            else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
             else continue;
 
-            results.Add(new ScannedFile(file.FullName, kind, file.Length, file.LastWriteTimeUtc.Ticks));
+            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, null));
+        }
+
+        foreach (string subfolder in Directory.GetDirectories(folderPath, "*", SearchOption.TopDirectoryOnly))
+        {
+            results.Add(new ScannedFile(subfolder.TrimEnd('\\', '/'), MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, null));
+
+            foreach (FileInfo file in new DirectoryInfo(folderPath).EnumerateFiles("*",
+                new EnumerationOptions
+                {
+                    RecurseSubdirectories = false,
+                    MaxRecursionDepth = 0,
+                    IgnoreInaccessible = true
+                }))
+            {
+                string ext = file.Extension;
+
+                MediaKind mediaKind;
+                if (ImageExtensions.Contains(ext)) mediaKind = MediaKind.Image;
+                else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
+                else continue;
+
+                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder));
+            }
         }
 
         return results;
@@ -57,29 +81,53 @@ public class MediaScanner
     /// recognise the same file after it has been moved or renamed. (Unlike a path, it is also
     /// something an Android app could compute to match its own copy of a file.)
     /// </summary>
-    public static string ComputeFingerprint(string path)
+    public static string? ComputeFingerprint(string path, MediaKind mediaKind)
     {
         const int Chunk = 64 * 1024;
+        bool fingerprintComputed = false;
 
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read); // Do I need this as fourth variable? - , FileShare.ReadWrite | FileShare.Delete
         using var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-
-        long length = stream.Length;
-        sha.AppendData(BitConverter.GetBytes(length));
-
-        var buffer = new byte[Chunk];
-
-        int read = ReadFully(stream, buffer);
-        sha.AppendData(buffer, 0, read);
-
-        if (length > Chunk)
+        if (mediaKind == MediaKind.Folder)
         {
-            stream.Seek(Math.Max(Chunk, length - Chunk), SeekOrigin.Begin);
-            read = ReadFully(stream, buffer);
+            string[] subFiles = Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly);
+
+            string? firstFingerprint = ComputeFingerprint(subFiles[0], MediaKind.Image);
+            string? lastFingerprint = ComputeFingerprint(subFiles[subFiles.Length - 1], MediaKind.Image);
+
+            if (firstFingerprint == null || lastFingerprint == null)
+                return null;
+
+            List<string> subFilesFingerprints = new List<string>() { firstFingerprint, lastFingerprint };
+
+            foreach (var fp in subFilesFingerprints.Order())
+            {
+                sha.AppendData(Encoding.UTF8.GetBytes(fp));
+                sha.AppendData(new byte[] { 0 });
+                fingerprintComputed = true;
+            }
+        }
+        else
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            long length = stream.Length;
+            sha.AppendData(BitConverter.GetBytes(length));
+
+            var buffer = new byte[Chunk];
+
+            int read = ReadFully(stream, buffer);
             sha.AppendData(buffer, 0, read);
+
+            if (length > Chunk)
+            {
+                stream.Seek(Math.Max(Chunk, length - Chunk), SeekOrigin.Begin);
+                read = ReadFully(stream, buffer);
+                sha.AppendData(buffer, 0, read);
+            }
+
+            fingerprintComputed = true;
         }
 
-        return Convert.ToHexString(sha.GetHashAndReset());
+        return fingerprintComputed ? Convert.ToHexString(sha.GetHashAndReset()) : null;
     }
 
     private static int ReadFully(Stream stream, byte[] buffer)

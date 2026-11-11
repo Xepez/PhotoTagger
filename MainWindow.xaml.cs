@@ -44,9 +44,6 @@ namespace PhotoTagger
         private int _filterVersion;
         private int _selectionVersion;
 
-        private bool FolderMode => ViewModeSelector.SelectedIndex == 1;
-        private TagTarget CurrentTarget => FolderMode ? TagTarget.Folder : TagTarget.Media;
-
         public MainWindow()
         {
             _repo = new MediaRepository(_db);
@@ -55,7 +52,7 @@ namespace PhotoTagger
 
             PreviewTagList.ItemsSource = _currentTags;
             MediaGrid.ContainerContentChanging += ThumbnailGrid_ContainerContentChanging;
-            FolderGrid.ContainerContentChanging += ThumbnailGrid_ContainerContentChanging;
+            //FolderGrid.ContainerContentChanging += ThumbnailGrid_ContainerContentChanging;
             Closed += (_, _) => StopVideo();
 
             _ = LoadLibraryAsync();
@@ -216,40 +213,10 @@ namespace PhotoTagger
         }
         #endregion
 
-        // ------------------------------------------------------------------
-        // Browse mode: photos & videos  <->  folders
-        // ------------------------------------------------------------------
-
-        private async void ViewModeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (!_filtersReady) return;
-            await ApplyViewModeAsync();
-        }
-
-        private async Task ApplyViewModeAsync()
-        {
-            bool folders = FolderMode;
-
-            MediaGrid.Visibility = folders ? Visibility.Collapsed : Visibility.Visible;
-            FolderGrid.Visibility = folders ? Visibility.Visible : Visibility.Collapsed;
-
-            KindFilter.IsEnabled = !folders;   // folders hold both photos and videos
-            SearchFileNameBox.PlaceholderText = folders ? "Search folders (name or path)..." : "Search file names..."; // TODO - Remove after folder and picture merge
-
-            ResetPreview();
-
-            // Drop the other grid's data so it doesn't sit in memory.
-            if (folders) MediaGrid.ItemsSource = null;
-            else FolderGrid.ItemsSource = null;
-
-            await RefreshTagListAsync();   // the tag counts differ between files and folders
-            await ApplyMediaListFilterAsync();
-        }
-
         #region Filtering
         private MediaFilter BuildFilter()
         {
-            MediaKind? kind = KindFilter.SelectedIndex switch
+            MediaKind? mediaKind = KindFilter.SelectedIndex switch
             {
                 1 => MediaKind.Image,
                 2 => MediaKind.Video,
@@ -260,7 +227,7 @@ namespace PhotoTagger
             return new MediaFilter
             {
                 Text = SearchFileNameBox.Text,
-                Kind = kind,
+                MediaKind = mediaKind,
                 UntaggedOnly = UntaggedOnly.IsChecked == true,
                 MatchAllTags = MatchAllToggle.IsOn,
                 Tags = TagList.SelectedItems.OfType<TagInfo>().Select(t => t.Name).ToList()
@@ -270,7 +237,6 @@ namespace PhotoTagger
         private async Task ApplyMediaListFilterAsync()
         {
             int version = ++_filterVersion;
-            bool folders = FolderMode;
             MediaFilter filter = BuildFilter();   // read the controls on the UI thread
 
             try
@@ -287,6 +253,8 @@ namespace PhotoTagger
             }
         }
         #endregion
+
+        #region On Change Functions
 
         private void SearchFileNameBox_TextChanged(object sender, TextChangedEventArgs e)
         {
@@ -362,6 +330,8 @@ namespace PhotoTagger
             await ApplyMediaListFilterAsync();
         }
 
+        #endregion
+
         // Rebuilds the sidebar tag list (names + counts for the current mode) and keeps the selection.
         private async Task RefreshTagListAsync()
         {
@@ -370,7 +340,7 @@ namespace PhotoTagger
                 .Select(t => t.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            TagTarget target = CurrentTarget;
+            //TagTarget target = CurrentTarget;
             List<TagInfo> tags;
             List<string> allNames;
             string filter = FilterTagsSearchBox.Text;
@@ -380,7 +350,7 @@ namespace PhotoTagger
 
             try
             {
-                tags = await Task.Run(() => _repo.GetTagsWithCounts(target, filter));
+                tags = await Task.Run(() => _repo.GetTagsWithCounts(filter));
                 allNames = await Task.Run(() => _repo.GetAllTagNames());
             }
             catch (Exception ex)
@@ -453,8 +423,6 @@ namespace PhotoTagger
 
         private async void MediaGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (FolderMode) return;   // the hidden grid is being cleared; ignore it
-
             ResetPreview();
             int version = _selectionVersion;
 
@@ -478,7 +446,7 @@ namespace PhotoTagger
 
             try
             {
-                var tags = await Task.Run(() => _repo.GetTags(TagTarget.Media, item.Id));
+                var tags = await Task.Run(() => _repo.GetTags(item.Id));
                 if (version != _selectionVersion) return;   // user already clicked something else
 
                 foreach (string tag in tags)
@@ -509,41 +477,54 @@ namespace PhotoTagger
             TagEditorContainer.IsEnabled = false;
             PreviewFileName.Text = "No selection";
             PreviewFilePath.Text = string.Empty;
-            SelectionHint.Text = FolderMode
-                ? "Select a folder to browse it and add tags."
-                : "Select an item to see details and add tags.";
+            SelectionHint.Text = "Select an item to see details and add tags.";
         }
 
         private async Task ShowPreviewAsync(MediaItem item, int version)
         {
             StopVideo();
 
-            if (item.IsVideo)
+            switch (item.Kind)
             {
-                PreviewImage.Visibility = Visibility.Collapsed;
-                PreviewPlayer.Visibility = Visibility.Visible;
+                case MediaKind.Image:
+                    PreviewImage.Visibility = Visibility.Visible;
+                    PreviewPlayer.Visibility = Visibility.Collapsed;
+                    FolderNav.Visibility = Visibility.Collapsed;
 
-                try
-                {
-                    StorageFile file = await StorageFile.GetFileFromPathAsync(item.FilePath);
+                    var preview = await _previewService.LoadPreviewAsync(item.FilePath);
                     if (version != _selectionVersion) return;
 
-                    PreviewPlayer.Source = MediaSource.CreateFromStorageFile(file);   // paused until you press play
-                }
-                catch (Exception ex)
-                {
-                    SelectionHint.Text = "Could not open video: " + ex.Message;
-                }
-            }
-            else
-            {
-                PreviewPlayer.Visibility = Visibility.Collapsed;
-                PreviewImage.Visibility = Visibility.Visible;
+                    PreviewImage.Source = preview;
 
-                var preview = await _previewService.LoadPreviewAsync(item.FilePath);
-                if (version != _selectionVersion) return;
+                    break;
+                case MediaKind.Video:
+                    PreviewImage.Visibility = Visibility.Collapsed;
+                    PreviewPlayer.Visibility = Visibility.Visible;
+                    FolderNav.Visibility = Visibility.Collapsed;
 
-                PreviewImage.Source = preview;
+                    try
+                    {
+                        StorageFile file = await StorageFile.GetFileFromPathAsync(item.FilePath);
+                        if (version != _selectionVersion) return;
+
+                        PreviewPlayer.Source = MediaSource.CreateFromStorageFile(file);   // paused until you press play
+                    }
+                    catch (Exception ex)
+                    {
+                        SelectionHint.Text = "Could not open video: " + ex.Message;
+                    }
+
+                    break;
+                case MediaKind.Folder:
+                    PreviewImage.Visibility = Visibility.Collapsed;
+                    PreviewPlayer.Visibility = Visibility.Collapsed;
+                    FolderNav.Visibility = Visibility.Visible;
+                    break;
+                default:
+                    PreviewImage.Visibility = Visibility.Visible;
+                    PreviewPlayer.Visibility = Visibility.Collapsed;
+                    FolderNav.Visibility = Visibility.Collapsed;
+                    break;
             }
         }
 
@@ -561,58 +542,58 @@ namespace PhotoTagger
         //// Selection and preview: folders (open the first item, then prev/next)
         //// ------------------------------------------------------------------
 
-        //private async void FolderGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        //{
-        //    if (!FolderMode) return;   // the hidden grid is being cleared; ignore it
+        // --------------------------- TODO - Continue working on preview here -------------------------------------------------------------------------------------------------------------------
 
-        //    ResetPreview();
-        //    int version = _selectionVersion;
+        private async void FolderGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ResetPreview();
+            int version = _selectionVersion;
 
-        //    var selected = FolderGrid.SelectedItems.OfType<FolderItem>().ToList();
-        //    TagEditorContainer.IsEnabled = selected.Count > 0;
+            var selected = MediaGrid.SelectedItems.OfType<MediaItem>().ToList();
+            TagEditorContainer.IsEnabled = selected.Count > 0;
 
-        //    if (selected.Count == 0)
-        //        return;
+            if (selected.Count == 0)
+                return;
 
-        //    if (selected.Count > 1)
-        //    {
-        //        PreviewFileName.Text = $"{selected.Count} folders selected";
-        //        SelectionHint.Text = "A tag you add is applied to all selected folders.";
-        //        return;
-        //    }
+            if (selected.Count > 1)
+            {
+                PreviewFileName.Text = $"{selected.Count} items selected";
+                SelectionHint.Text = "A tag you add is applied to all selected folders.";
+                return;
+            }
 
-        //    FolderItem folder = selected[0];
-        //    PreviewFileName.Text = folder.Name;
-        //    PreviewFilePath.Text = folder.FolderPath;
-        //    SelectionHint.Text = string.Empty;
+            MediaItem folder = selected[0];
+            PreviewFileName.Text = folder.FileName;
+            PreviewFilePath.Text = folder.FilePath;
+            SelectionHint.Text = string.Empty;
 
-        //    try
-        //    {
-        //        var tags = await Task.Run(() => _repo.GetTags(TagTarget.Folder, folder.Id));
-        //        var media = await Task.Run(() => _repo.GetFolderMedia(folder.Id));
-        //        if (version != _selectionVersion) return;
+            try
+            {
+                var tags = await Task.Run(() => _repo.GetTags(folder.Id));
+                var media = await Task.Run(() => _repo.Query(folder.Id));
+                if (version != _selectionVersion) return;
 
-        //        foreach (string tag in tags)
-        //            _currentTags.Add(tag);
+                foreach (string tag in tags)
+                    _currentTags.Add(tag);
 
-        //        _folderMedia = media;
+                _folderMedia = media;
 
-        //        if (media.Count > 0)
-        //            await ShowFolderIndexAsync(0, version);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        PopupMessage(true, "Could not open folder: " + ex.Message);
-        //    }
-        //}
+                if (media.Count > 0)
+                    await ShowFolderIndexAsync(0, version);
+            }
+            catch (Exception ex)
+            {
+                PopupMessage(true, "Could not open folder: " + ex.Message);
+            }
+        }
 
-        //private async Task ShowFolderIndexAsync(int index, int version)
-        //{
-        //    _folderIndex = index;
-        //    UpdateNavigation();
+        private async Task ShowFolderIndexAsync(int index, int version)
+        {
+            _folderIndex = index;
+            UpdateNavigation();
 
-        //    await ShowPreviewAsync(_folderMedia[index], version);
-        //}
+            await ShowPreviewAsync(_folderMedia[index], version);
+        }
 
         private void UpdateNavigation()
         {
@@ -682,7 +663,6 @@ namespace PhotoTagger
             string tag = MediaRepository.NormalizeTag(rawText);
             if (tag.Length == 0) return;
 
-            TagTarget target = CurrentTarget;
             var ids = GetSelectedIds();
             if (ids.Count == 0) return;
 
@@ -690,15 +670,15 @@ namespace PhotoTagger
 
             try
             {
-                await Task.Run(() => _repo.AddTag(target, ids, tag));
+                await Task.Run(() => _repo.AddTag(ids, tag));
 
                 if (ids.Count == 1)
                 {
                     long id = ids[0];
-                    var tags = await Task.Run(() => _repo.GetTags(target, id));
+                    var tags = await Task.Run(() => _repo.GetTags(id));
 
                     // Only touch the tag list if the user is still looking at the same thing.
-                    if (target == CurrentTarget && GetSingleSelectedId() == id)
+                    if (GetSingleSelectedId() == id)
                     {
                         _currentTags.Clear();
                         foreach (string t in tags)
@@ -722,14 +702,13 @@ namespace PhotoTagger
         {
             if (sender is not Button { Tag: string tag }) return;
 
-            TagTarget target = CurrentTarget;
             if (GetSingleSelectedId() is not long id) return;
 
             try
             {
-                await Task.Run(() => _repo.RemoveTag(target, id, tag));
+                await Task.Run(() => _repo.RemoveTag(id, tag));
 
-                if (target == CurrentTarget && GetSingleSelectedId() == id)
+                if (GetSingleSelectedId() == id)
                 {
                     string? existing = _currentTags.FirstOrDefault(
                         t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));

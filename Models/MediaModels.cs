@@ -88,7 +88,7 @@ public sealed record TagInfo(long Id, string Name, int Count)
 public sealed class MediaFilter
 {
     public string? Text { get; init; }
-    public MediaKind? Kind { get; init; }                 // null = photos and videos
+    public MediaKind? MediaKind { get; init; }                 // null = photos and videos
     public bool UntaggedOnly { get; init; }               // when true, Tags is ignored
     public bool MatchAllTags { get; init; } = true;       // true = AND, false = OR
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();

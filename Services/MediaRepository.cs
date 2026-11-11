@@ -96,8 +96,8 @@ public sealed class MediaRepository
     // Sync (scan results -> database)
     // ------------------------------------------------------------------
 
-    private sealed record ExistingRow(long Id, MediaKind Kind, long Size, long Modified, bool Missing);
-    private sealed record RelinkCandidate(long MediaId, long? FolderId);
+    private sealed record ExistingRow(long Id, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, bool IsMissing);
+    private sealed record RelinkCandidate(long MediaId, bool IsFolder);
 
     public SyncResult SyncRoot(string root, IReadOnlyList<ScannedFile> files, IProgress<(int Done, int Total)>? progress = null)
     {
@@ -110,8 +110,8 @@ public sealed class MediaRepository
 
         // Get existing files
         var existing = new Dictionary<string, ExistingRow>(StringComparer.OrdinalIgnoreCase);
-        using (var cmd = Cmd(conn, tx,
-            @"SELECT id, path, kind, size_bytes, modified_utc, missing
+        using (var cmd = Cmd(conn, tx, @"
+            SELECT id, path, media_kind, size_bytes, modified_utc, is_missing
             FROM media
             WHERE substr(path, 1, @len) = @root COLLATE NOCASE",
             ("@len", root.Length), ("@root", root)))
@@ -131,52 +131,75 @@ public sealed class MediaRepository
         {
             seen.Add(file.Path);
 
+            // TODO
+            //if (file.MediaKind == MediaKind.Folder)
+            //{
+            //    // Folders are only added to the database if they contain files, so we don't need to
+            //    // create a row for every empty folder. (The folder's row will be created when the
+            //    // first file is added to it.)
+            //    int xxx = 0;
+            //}
+
             try
             {
                 if (existing.TryGetValue(file.Path, out var row))
                 {
-                    if ((row.Kind != MediaKind.Folder && row.Size == file.SizeBytes) && row.Modified == file.ModifiedUtcTicks)
+                    if (row.SizeBytes == file.SizeBytes && row.ModifiedUtc == file.ModifiedUtc && row.IsMissing) // TODO - Test this
                     {
-                        if (row.Missing)
-                            Exec(conn, tx, "UPDATE media SET missing = 0 WHERE id = @id", ("@id", row.Id));
+                        Exec(conn, tx, "UPDATE media SET is_missing = 0 WHERE id = @id", ("@id", row.Id));
                     }
                     else
                     {
                         // Same path, different content (edited photo). Keep the row, so tags stay.
-                        string fp = MediaScanner.ComputeFingerprint(file.Path);
+                        string? fingerprint = MediaScanner.ComputeFingerprint(file.Path, file.MediaKind);
+                        if (fingerprint == null)
+                        {
+                            unreadable++;
+                            continue;
+                        }
+
                         Exec(conn, tx, @"
                             UPDATE media
-                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, missing = 0
+                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, is_missing = 0
                             WHERE id = @id",
-                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtcTicks), ("@fingerprint", fp), ("@id", row.Id));
+                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint), ("@id", row.Id));
                         updated++;
                     }
                 }
                 else
                 {
-                    // TODO - Review from here ---------------------------------------------------------------------------------------------------------------------------------
-                    string fp = MediaScanner.ComputeFingerprint(file.Path);
-                    RelinkCandidate? candidate = FindRelinkCandidate(conn, tx, fp, file.SizeBytes, file.Path);
+                    string? fingerprint = MediaScanner.ComputeFingerprint(file.Path, file.MediaKind);
+                    if (fingerprint == null)
+                    {
+                        unreadable++;
+                        continue;
+                    }
+
+                    RelinkCandidate? candidate = FindRelinkCandidate(conn, tx, fingerprint, file.SizeBytes, file.Path, file.MediaKind);
 
                     if (candidate != null)
                     {
                         Exec(conn, tx, @"
                             UPDATE media 
-                            SET path=@p, name=@n, modified_utc=@m, missing=0 
-                            WHERE id=@id",
-                            ("@p", file.Path), ("@n", Path.GetFileName(file.Path)),
-                            ("@m", file.ModifiedUtcTicks), ("@id", candidate.MediaId));
+                            SET path = @path, name = @name, modified_utc = @modified_utc, is_missing = 0 
+                            WHERE id = @id",
+                            ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
+                            ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId));
 
                         claimedIds.Add(candidate.MediaId);
                         moved++;
                     }
                     else
                     {
-                        Exec(conn, tx,
-                            "INSERT INTO media (path, name, kind, size_bytes, modified_utc, fingerprint, added_utc) " +
-                            "VALUES (@path, @name, @kind, @size_bytes, @modified_utc, @fingerprint, @added_utc)",
-                            ("@path", file.Path), ("@name", Path.GetFileName(file.Path)), ("@kind", (int)file.Kind),
-                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtcTicks), ("@fingerprint", fp), ("@added_utc", now));
+                        Exec(conn, tx, @"
+                            INSERT INTO media (path, name, media_kind, size_bytes, modified_utc, fingerprint, added_utc, is_folder, folder_path)
+                            VALUES (@path, @name, @media_kind, @size_bytes, @modified_utc, @fingerprint, @added_utc, @is_folder, @folder_path)",
+                            ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
+                            ("@media_kind", (int)file.MediaKind), ("@size_bytes", file.SizeBytes),
+                            ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint),
+                            ("@added_utc", now), ("@is_folder", file.MediaKind == MediaKind.Folder ? 1 : 0),
+                            ("folder_path", file.FolderPath)); // TODO - Test folder path - moving out of folder
+
                         added++;
                     }
                 }
@@ -190,10 +213,10 @@ public sealed class MediaRepository
         // 3. Files under this root that weren't found: flag them, never delete them.
         foreach (var (path, row) in existing)
         {
-            if (seen.Contains(path) || row.Missing || claimedIds.Contains(row.Id))
+            if (seen.Contains(path) || row.IsMissing || claimedIds.Contains(row.Id))
                 continue;
 
-            Exec(conn, tx, "UPDATE media SET missing = 1 WHERE id = @id", ("@id", row.Id));
+            Exec(conn, tx, "UPDATE media SET is_missing = 1 WHERE id = @id", ("@id", row.Id));
             missing++;
         }
 
@@ -203,18 +226,20 @@ public sealed class MediaRepository
 
     // A row with identical content whose file no longer exists at its recorded path.
     // (A row whose file still exists is a genuine copy and gets its own, separately tagged row.)
-    private static RelinkCandidate? FindRelinkCandidate(SqliteConnection conn, SqliteTransaction tx, string fingerprint, long size, string newPath)
+    private static RelinkCandidate? FindRelinkCandidate(SqliteConnection conn, SqliteTransaction tx, string fingerprint, long size, string newPath, MediaKind mediaKind)
     {
-        using var cmd = Cmd(conn, tx,
-            "SELECT id, path, missing, folder_id FROM media WHERE fingerprint = @fp AND size_bytes = @s AND path <> @p",
-            ("@fp", fingerprint), ("@s", size), ("@p", newPath));
+        using var cmd = Cmd(conn, tx, @"
+            SELECT id, path, is_missing, is_folder 
+            FROM media 
+            WHERE fingerprint = @fingerprint AND size_bytes = @size_bytes AND path <> @path AND media_kind = @media_kind",
+            ("@fingerprint", fingerprint), ("@size_bytes", size), ("@path", newPath), ("@media_kind", mediaKind));
         using var r = cmd.ExecuteReader();
 
         while (r.Read())
         {
             bool isMissing = r.GetInt64(2) != 0;
             if (isMissing || !File.Exists(r.GetString(1)))
-                return new RelinkCandidate(r.GetInt64(0), r.IsDBNull(3) ? null : r.GetInt64(3));
+                return new RelinkCandidate(r.GetInt64(0), r.GetBoolean(3));
         }
 
         return null;
@@ -226,13 +251,13 @@ public sealed class MediaRepository
 
     public List<MediaItem> Query(MediaFilter filter)
     {
-        var sql = new StringBuilder("SELECT m.id, m.path, m.kind FROM media m WHERE m.missing = 0");
+        var sql = new StringBuilder("SELECT m.id, m.path, m.media_kind FROM media m WHERE m.is_missing = 0");
         var ps = new List<(string, object?)>();
 
-        if (filter.Kind is MediaKind kind)
+        if (filter.MediaKind is MediaKind mediaKind)
         {
-            sql.Append(" AND m.kind = @kind");
-            ps.Add(("@kind", (int)kind));
+            sql.Append(" AND m.media_kind = @media_kind");
+            ps.Add(("@media_kind", (int)mediaKind));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Text))
@@ -300,7 +325,7 @@ public sealed class MediaRepository
     // Tags (shared by files and folders)
     // ------------------------------------------------------------------
 
-    private static (string Table, string Column, string Parent) Link(TagTarget target) => ("media_tags", "media_id", "media");
+    private static (string Table, string Column, string Parent) Link() => ("media_tags", "media_id", "media");
 
     /// <summary>Trims, collapses inner whitespace, caps the length. Commas and symbols are fine.</summary>
     public static string NormalizeTag(string? raw)
@@ -311,9 +336,9 @@ public sealed class MediaRepository
         return tag.Length > MaxTagLength ? tag.Substring(0, MaxTagLength).TrimEnd() : tag;
     }
 
-    public List<string> GetTags(TagTarget target, long id)
+    public List<string> GetTags(long id)
     {
-        var (table, column, _) = Link(target);
+        var (table, column, _) = Link();
 
         using var conn = _db.Open();
         using var cmd = Cmd(conn, null,
@@ -328,9 +353,9 @@ public sealed class MediaRepository
     }
 
     /// <summary>Tags in use by files (or by folders), with counts. Unused tags are not listed.</summary>
-    public List<TagInfo> GetTagsWithCounts(TagTarget target, string tagNameFilter = "")
+    public List<TagInfo> GetTagsWithCounts(string tagNameFilter = "")
     {
-        var (table, column, parent) = Link(target);
+        var (table, column, parent) = Link();
 
         (string Name, object? Value)[] parameters = [($"@{nameof(tagNameFilter)}", "%" + tagNameFilter + "%")];
 
@@ -338,7 +363,7 @@ public sealed class MediaRepository
             SELECT t.id, t.name, COUNT(*)
             FROM tags t
             JOIN {table} l ON l.tag_id = t.id
-            JOIN {parent} x ON x.id = l.{column} AND x.missing = 0");
+            JOIN {parent} x ON x.id = l.{column} AND x.is_missing = 0");
 
         if (tagNameFilter != "")
             sql.Append($" WHERE t.name LIKE @{nameof(tagNameFilter)} ");
@@ -370,12 +395,12 @@ public sealed class MediaRepository
     }
 
     /// <summary>Adds a tag to one or many files/folders in a single transaction. Re-adding is a no-op.</summary>
-    public void AddTag(TagTarget target, IReadOnlyCollection<long> ids, string tag)
+    public void AddTag(IReadOnlyCollection<long> ids, string tag)
     {
         tag = NormalizeTag(tag);
         if (tag.Length == 0 || ids.Count == 0) return;
 
-        var (table, column, _) = Link(target);
+        var (table, column, _) = Link();
 
         using var conn = _db.Open();
         using var tx = conn.BeginTransaction();
@@ -399,9 +424,9 @@ public sealed class MediaRepository
     /// Removes a tag from one file/folder. If neither files nor folders use the tag any more,
     /// the tag itself is deleted.
     /// </summary>
-    public void RemoveTag(TagTarget target, long id, string tag)
+    public void RemoveTag(long id, string tag)
     {
-        var (table, column, _) = Link(target);
+        var (table, column, _) = Link();
 
         using var conn = _db.Open();
         using var tx = conn.BeginTransaction();

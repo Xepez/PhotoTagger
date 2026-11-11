@@ -95,18 +95,20 @@ public sealed class MediaDatabase
         create.Transaction = tx;
         create.CommandText = @"
             CREATE TABLE media (
-                id           INTEGER PRIMARY KEY,
-                path         TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-                name         TEXT    NOT NULL,
-                kind         INTEGER NOT NULL,            -- 0 = image, 1 = video
-                size_bytes   INTEGER NOT NULL,
-                modified_utc INTEGER NOT NULL,            -- DateTime ticks (UTC)
-                fingerprint  TEXT    NOT NULL,            -- size + head/tail hash; survives moves/renames
-                missing      INTEGER NOT NULL DEFAULT 0,  -- 1 = not found on last scan (tags are kept)
-                added_utc    INTEGER NOT NULL
+                id           INTEGER    PRIMARY KEY,
+                path         TEXT       NOT NULL UNIQUE COLLATE NOCASE,
+                name         TEXT       NOT NULL,
+                media_kind   INTEGER    NOT NULL,           -- MediaKind
+                size_bytes   INTEGER    NOT NULL,
+                modified_utc INTEGER    NOT NULL,           -- DateTime ticks (UTC)
+                fingerprint  TEXT       NOT NULL,           -- size + head/tail hash; survives moves/renames
+                is_missing   TINYINT(1) NOT NULL DEFAULT 0, -- 1 = not found on last scan (tags are kept)
+                added_utc    INTEGER    NOT NULL,
+                is_folder    TINYINT(1) NOT NULL DEFAULT 0,
+                folder_path  TEXT       NULL
             );
             CREATE INDEX idx_media_fingerprint ON media(fingerprint, size_bytes);
-            CREATE INDEX idx_media_kind ON media(kind);
+            CREATE INDEX idx_media_kind ON media(media_kind);
 
             CREATE TABLE tags (
                 id   INTEGER PRIMARY KEY,
