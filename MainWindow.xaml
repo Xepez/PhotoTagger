@@ -60,166 +60,192 @@
         <Grid Grid.Row="1" ColumnSpacing="16">
 
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260" />
+                <ColumnDefinition x:Name="FilterColumn" Width="Auto" />
                 <ColumnDefinition Width="2*" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="PreviewColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Filter sidebar -->
-            <ScrollViewer
-                Grid.Column="0"
-                VerticalScrollBarVisibility="Auto"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollMode="Enabled">
+            <!-- Filter panel (collapsible) -->
+            <Grid Grid.Column="0" ColumnSpacing="4">
 
-                <Grid RowSpacing="8" Padding="0,0,12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                <!-- Filter sidebar -->
+                <ScrollViewer
+                    x:Name="FilterContent"
+                    Grid.Column="0"
+                    Width="260"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollMode="Enabled">
 
-                    <!-- Folder Filtering -->
-                    <Expander
-                        Grid.Row="0"
-                        IsExpanded="True"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch">
+                    <Grid RowSpacing="8" Padding="0,0,12,0">
 
-                        <Expander.Header>
-                            <TextBlock Text="Folders" FontSize="16" FontWeight="SemiBold" />
-                        </Expander.Header>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
 
-                        <StackPanel Spacing="8">
+                        <!-- Folder Filtering -->
+                        <Expander
+                            Grid.Row="0"
+                            IsExpanded="True"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch">
 
-                            <TextBox
-                                x:Name="FilterFolderSearchBox"
-                                PlaceholderText="Search folders..."
-                                TextChanged="FilterFolderSearchBox_TextChanged" />
+                            <Expander.Header>
+                                <TextBlock Text="Folders" FontSize="16" FontWeight="SemiBold" />
+                            </Expander.Header>
 
-                            <ToggleSwitch
-                                x:Name="FilterSelectAllFolders"
-                                MinWidth="0"
-                                IsOn="True"
-                                OnContent="Unselect All"
-                                OffContent="Select All"
-                                Toggled="FilterSelectAllFoldersToggle_Changed" />
-
-                            <ListView
-                                x:Name="FolderList"
-                                MaxHeight="300"
-                                SelectionMode="Multiple"
-                                DisplayMemberPath="Label"
-                                SelectionChanged="FolderList_SelectionChanged" />
-
-                        </StackPanel>
-                    </Expander>
-
-                    <!-- File and Type Filtering -->
-                    <Expander
-                        Grid.Row="1"
-                        IsExpanded="True"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch">
-
-                        <Expander.Header>
-                            <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
-                        </Expander.Header>
-
-                        <StackPanel Spacing="8">
-
-                            <TextBox
-                                x:Name="SearchFileNameBox"
-                                PlaceholderText="Search files..."
-                                TextChanged="SearchFileNameBox_TextChanged" />
-
-                            <ComboBox
-                                x:Name="KindFilter"
-                                HorizontalAlignment="Stretch"
-                                SelectedIndex="0"
-                                SelectionChanged="KindFilter_SelectionChanged">
-                                <ComboBoxItem Content="All" />
-                                <ComboBoxItem Content="Photos only" />
-                                <ComboBoxItem Content="Videos only" />
-                                <ComboBoxItem Content="Folders only" />
-                            </ComboBox>
-
-                        </StackPanel>
-                    </Expander>
-
-                    <!-- Tag Filters -->
-                    <Expander
-                        Grid.Row="2"
-                        IsExpanded="True"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch">
-
-                        <Expander.Header>
-                            <TextBlock Text="Tags" FontSize="16" FontWeight="SemiBold" />
-                        </Expander.Header>
-
-                        <StackPanel Spacing="8">
-
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="8">
 
                                 <TextBox
-                                    x:Name="FilterTagsSearchBox"
-                                    Grid.Column="0"
-                                    PlaceholderText="Search tags..."
-                                    TextChanged="FilterTagsSearchBox_TextChanged" />
-
-                                <Button
-                                    x:Name="FilterResetButton"
-                                    Grid.Column="1"
-                                    Content="Clear filters"
-                                    VerticalAlignment="Stretch"
-                                    Click="ClearFiltersButton_Click" />
-                            </Grid>
-
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <CheckBox
-                                    x:Name="UntaggedOnly"
-                                    Grid.Column="0"
-                                    Content="Untagged Only"
-                                    MinWidth="0"
-                                    VerticalAlignment="Center"
-                                    Checked="FilterTagToggle_Changed"
-                                    Unchecked="FilterTagToggle_Changed" />
+                                    x:Name="FilterFolderSearchBox"
+                                    PlaceholderText="Search folders..."
+                                    TextChanged="FilterFolderSearchBox_TextChanged" />
 
                                 <ToggleSwitch
-                                    x:Name="MatchAllToggle"
-                                    Grid.Column="1"
+                                    x:Name="FilterSelectAllFolders"
                                     MinWidth="0"
-                                    VerticalAlignment="Center"
                                     IsOn="True"
-                                    OnContent="ALL tags"
-                                    OffContent="ANY tags"
-                                    Toggled="FilterTagToggle_Changed" />
-                            </Grid>
+                                    OnContent="Unselect All"
+                                    OffContent="Select All"
+                                    Toggled="FilterSelectAllFoldersToggle_Changed" />
 
-                            <!-- Tags List -->
-                            <ListView
-                                x:Name="TagList"
-                                MaxHeight="400"
-                                SelectionMode="Multiple"
-                                DisplayMemberPath="Label"
-                                SelectionChanged="TagList_SelectionChanged" />
+                                <ListView
+                                    x:Name="FolderList"
+                                    MaxHeight="300"
+                                    SelectionMode="Multiple"
+                                    DisplayMemberPath="Label"
+                                    SelectionChanged="FolderList_SelectionChanged" />
 
-                        </StackPanel>
-                    </Expander>
+                            </StackPanel>
+                        </Expander>
 
-                </Grid>
-            </ScrollViewer>
+                        <!-- File and Type Filtering -->
+                        <Expander
+                            Grid.Row="1"
+                            IsExpanded="True"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch">
+
+                            <Expander.Header>
+                                <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
+                            </Expander.Header>
+
+                            <StackPanel Spacing="8">
+
+                                <TextBox
+                                    x:Name="SearchFileNameBox"
+                                    PlaceholderText="Search files..."
+                                    TextChanged="SearchFileNameBox_TextChanged" />
+
+                                <ComboBox
+                                    x:Name="KindFilter"
+                                    HorizontalAlignment="Stretch"
+                                    SelectedIndex="0"
+                                    SelectionChanged="KindFilter_SelectionChanged">
+                                    <ComboBoxItem Content="All" />
+                                    <ComboBoxItem Content="Photos only" />
+                                    <ComboBoxItem Content="Videos only" />
+                                    <ComboBoxItem Content="Folders only" />
+                                </ComboBox>
+
+                            </StackPanel>
+                        </Expander>
+
+                        <!-- Tag Filters -->
+                        <Expander
+                            Grid.Row="2"
+                            IsExpanded="True"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch">
+
+                            <Expander.Header>
+                                <TextBlock Text="Tags" FontSize="16" FontWeight="SemiBold" />
+                            </Expander.Header>
+
+                            <StackPanel Spacing="8">
+
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBox
+                                        x:Name="FilterTagsSearchBox"
+                                        Grid.Column="0"
+                                        PlaceholderText="Search tags..."
+                                        TextChanged="FilterTagsSearchBox_TextChanged" />
+
+                                    <Button
+                                        x:Name="FilterResetButton"
+                                        Grid.Column="1"
+                                        Content="Clear filters"
+                                        VerticalAlignment="Stretch"
+                                        Click="ClearFiltersButton_Click" />
+                                </Grid>
+
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <CheckBox
+                                        x:Name="UntaggedOnly"
+                                        Grid.Column="0"
+                                        Content="Untagged Only"
+                                        MinWidth="0"
+                                        VerticalAlignment="Center"
+                                        Checked="FilterTagToggle_Changed"
+                                        Unchecked="FilterTagToggle_Changed" />
+
+                                    <ToggleSwitch
+                                        x:Name="MatchAllToggle"
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        VerticalAlignment="Center"
+                                        IsOn="True"
+                                        OnContent="ALL tags"
+                                        OffContent="ANY tags"
+                                        Toggled="FilterTagToggle_Changed" />
+                                </Grid>
+
+                                <!-- Tags List -->
+                                <ListView
+                                    x:Name="TagList"
+                                    MaxHeight="400"
+                                    SelectionMode="Multiple"
+                                    DisplayMemberPath="Label"
+                                    SelectionChanged="TagList_SelectionChanged" />
+
+                            </StackPanel>
+                        </Expander>
+
+                    </Grid>
+                </ScrollViewer>
+
+                <!-- Filter toggle (top-right corner of the sidebar) -->
+                <Button
+                    x:Name="FilterToggleButton"
+                    Grid.Column="1"
+                    VerticalAlignment="Top"
+                    Padding="8"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    AutomationProperties.Name="Toggle filters"
+                    ToolTipService.ToolTip="Hide filters"
+                    Click="FilterToggleButton_Click">
+                    <FontIcon x:Name="FilterToggleIcon" Glyph="&#xE76B;" FontSize="14" />
+                </Button>
+
+            </Grid>
 
             <!-- Photo/video grid -->
             <GridView
@@ -288,181 +314,206 @@
 
             </GridView>
 
-            <!-- Preview + Tag Editor -->
-            <Border
-                Grid.Column="2"
-                BorderThickness="1"
-                Padding="12">
+            <!-- Preview panel (collapsible) -->
+            <Grid Grid.Column="2" ColumnSpacing="4">
 
-                <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
 
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                <!-- Preview toggle (top-left corner of the preview) -->
+                <Button
+                    x:Name="PreviewToggleButton"
+                    Grid.Column="0"
+                    VerticalAlignment="Top"
+                    Padding="8"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    AutomationProperties.Name="Toggle preview"
+                    ToolTipService.ToolTip="Hide preview"
+                    Click="PreviewToggleButton_Click">
+                    <FontIcon x:Name="PreviewToggleIcon" Glyph="&#xE76C;" FontSize="14" />
+                </Button>
 
-                    <!-- Photo and video previews share one cell; code shows whichever applies -->
-                    <Grid Grid.Row="0">
+                <!-- Preview + Tag Editor -->
+                <Border
+                    x:Name="PreviewContent"
+                    Grid.Column="1"
+                    BorderThickness="1"
+                    Padding="12">
 
-                        <Image
-                            x:Name="PreviewImage"
-                            Stretch="Uniform" />
+                    <Grid>
 
-                        <MediaPlayerElement
-                            x:Name="PreviewPlayer"
-                            AreTransportControlsEnabled="True"
-                            AutoPlay="False"
-                            Stretch="Uniform"
-                            Visibility="Collapsed" />
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <!-- Photo and video previews share one cell; code shows whichever applies -->
+                        <Grid Grid.Row="0">
+
+                            <Image
+                                x:Name="PreviewImage"
+                                Stretch="Uniform" />
+
+                            <MediaPlayerElement
+                                x:Name="PreviewPlayer"
+                                AreTransportControlsEnabled="True"
+                                AutoPlay="False"
+                                Stretch="Uniform"
+                                Visibility="Collapsed" />
+
+                        </Grid>
+
+                        <!-- Previous / next through the selected folder (hidden unless a folder is selected) -->
+                        <Grid
+                            x:Name="FolderNav"
+                            Grid.Row="1"
+                            Margin="0,8,0,0"
+                            ColumnSpacing="8"
+                            Visibility="Collapsed">
+
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Button
+                                x:Name="PrevButton"
+                                Grid.Column="0"
+                                Click="PrevButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE76B;" FontSize="12" />
+                                    <TextBlock Text="Previous" />
+                                </StackPanel>
+                            </Button>
+
+                            <TextBlock
+                                x:Name="NavText"
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                TextTrimming="CharacterEllipsis" />
+
+                            <Button
+                                x:Name="NextButton"
+                                Grid.Column="2"
+                                Click="NextButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Next" />
+                                    <FontIcon Glyph="&#xE76C;" FontSize="12" />
+                                </StackPanel>
+                            </Button>
+
+                        </Grid>
+
+                        <StackPanel
+                            Grid.Row="2"
+                            Margin="0,12,0,0">
+
+                            <TextBlock
+                                x:Name="PreviewFileName"
+                                Text="No selection"
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                TextWrapping="Wrap" />
+
+                            <TextBlock
+                                x:Name="PreviewFilePath"
+                                Margin="0,4,0,0"
+                                Opacity="0.7"
+                                TextWrapping="Wrap" />
+
+                            <Button
+                                x:Name="SaveFolderThumbnail"
+                                Click="SaveFolderThumbnail_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                                    <TextBlock Text=" Save To Folder Thumbnail" />
+                                </StackPanel>
+                            </Button>
+
+                            <TextBlock
+                                Text="Tags"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Margin="0,12,0,4" />
+
+                            <ListView
+                                x:Name="PreviewTagList"
+                                MaxHeight="160"
+                                SelectionMode="None">
+
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock
+                                                Grid.Column="0"
+                                                Text="{Binding}"
+                                                VerticalAlignment="Center"
+                                                TextTrimming="CharacterEllipsis" />
+
+                                            <Button
+                                                Grid.Column="1"
+                                                Tag="{Binding}"
+                                                Padding="6,2"
+                                                Click="RemoveTag_Click"
+                                                ToolTipService.ToolTip="Remove tag">
+                                                <FontIcon Glyph="&#xE711;" FontSize="12" />
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+
+                            </ListView>
+
+                            <TextBlock
+                                x:Name="SelectionHint"
+                                Text="Select an item to see details and add tags."
+                                Opacity="0.7"
+                                TextWrapping="Wrap"
+                                Margin="0,4,0,0" />
+
+                            <ContentControl
+                                x:Name="TagEditorContainer"
+                                IsEnabled="False"
+                                Margin="0,8,0,0">
+
+                                <StackPanel
+                                    x:Name="TagEditor"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+
+                                    <AutoSuggestBox
+                                        x:Name="TagInput"
+                                        Width="220"
+                                        PlaceholderText="Add a tag..."
+                                        TextChanged="TagInput_TextChanged"
+                                        QuerySubmitted="TagInput_QuerySubmitted" />
+
+                                    <Button
+                                        Content="Add Tag"
+                                        Click="AddTagButton_Click" />
+
+                                </StackPanel>
+
+                            </ContentControl>
+
+                        </StackPanel>
 
                     </Grid>
 
-                    <!-- Previous / next through the selected folder (hidden unless a folder is selected) -->
-                    <Grid
-                        x:Name="FolderNav"
-                        Grid.Row="1"
-                        Margin="0,8,0,0"
-                        ColumnSpacing="8"
-                        Visibility="Collapsed">
+                </Border>
 
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <Button
-                            x:Name="PrevButton"
-                            Grid.Column="0"
-                            Click="PrevButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <FontIcon Glyph="&#xE76B;" FontSize="12" />
-                                <TextBlock Text="Previous" />
-                            </StackPanel>
-                        </Button>
-
-                        <TextBlock
-                            x:Name="NavText"
-                            Grid.Column="1"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            TextTrimming="CharacterEllipsis" />
-
-                        <Button
-                            x:Name="NextButton"
-                            Grid.Column="2"
-                            Click="NextButton_Click">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Text="Next" />
-                                <FontIcon Glyph="&#xE76C;" FontSize="12" />
-                            </StackPanel>
-                        </Button>
-
-                    </Grid>
-
-                    <StackPanel
-                        Grid.Row="2"
-                        Margin="0,12,0,0">
-
-                        <TextBlock
-                            x:Name="PreviewFileName"
-                            Text="No selection"
-                            FontSize="18"
-                            FontWeight="SemiBold"
-                            TextWrapping="Wrap" />
-
-                        <TextBlock
-                            x:Name="PreviewFilePath"
-                            Margin="0,4,0,0"
-                            Opacity="0.7"
-                            TextWrapping="Wrap" />
-
-                        <Button
-                            x:Name="SaveFolderThumbnail"
-                            Click="SaveFolderThumbnail_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                                <TextBlock Text=" Save To Folder Thumbnail" />
-                            </StackPanel>
-                        </Button>
-
-                        <TextBlock
-                            Text="Tags"
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Margin="0,12,0,4" />
-
-                        <ListView
-                            x:Name="PreviewTagList"
-                            MaxHeight="160"
-                            SelectionMode="None">
-
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <TextBlock
-                                            Grid.Column="0"
-                                            Text="{Binding}"
-                                            VerticalAlignment="Center"
-                                            TextTrimming="CharacterEllipsis" />
-
-                                        <Button
-                                            Grid.Column="1"
-                                            Tag="{Binding}"
-                                            Padding="6,2"
-                                            Click="RemoveTag_Click"
-                                            ToolTipService.ToolTip="Remove tag">
-                                            <FontIcon Glyph="&#xE711;" FontSize="12" />
-                                        </Button>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-
-                        </ListView>
-
-                        <TextBlock
-                            x:Name="SelectionHint"
-                            Text="Select an item to see details and add tags."
-                            Opacity="0.7"
-                            TextWrapping="Wrap"
-                            Margin="0,4,0,0" />
-
-                        <ContentControl
-                            x:Name="TagEditorContainer"
-                            IsEnabled="False"
-                            Margin="0,8,0,0">
-
-                            <StackPanel
-                                x:Name="TagEditor"
-                                Orientation="Horizontal"
-                                Spacing="8">
-
-                                <AutoSuggestBox
-                                    x:Name="TagInput"
-                                    Width="220"
-                                    PlaceholderText="Add a tag..."
-                                    TextChanged="TagInput_TextChanged"
-                                    QuerySubmitted="TagInput_QuerySubmitted" />
-
-                                <Button
-                                    Content="Add Tag"
-                                    Click="AddTagButton_Click" />
-
-                            </StackPanel>
-
-                        </ContentControl>
-
-                    </StackPanel>
-
-                </Grid>
-
-            </Border>
+            </Grid>
 
         </Grid>
 

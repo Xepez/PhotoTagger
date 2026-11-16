@@ -15,13 +15,6 @@ public enum MediaKind
     Folder = 2
 }
 
-/// <summary>Tags can be attached to individual files or to whole folders.</summary>
-public enum TagTarget
-{
-    Media,
-    Folder
-}
-
 /// <summary>Anything shown as a thumbnail card, so one loader can serve both grids.</summary>
 public interface IThumbnailItem
 {
@@ -32,13 +25,15 @@ public interface IThumbnailItem
 }
 
 /// <summary>One photo or video in the library (a row in the media table).</summary>
-public partial class MediaItem(int index, long id, string filePath, MediaKind kind, string folderThumbnailPath) : INotifyPropertyChanged, IThumbnailItem
+public partial class MediaItem(int index, long id, string filePath, MediaKind kind, string folderThumbnailPath, int imageHeight, int imageWidth) : INotifyPropertyChanged, IThumbnailItem
 {
     public int Index { get; } = index;
     public long Id { get; } = id;
     public string FilePath { get; } = filePath;
     public MediaKind Kind { get; } = kind;
     public string FolderThumbnailPath { get; } = folderThumbnailPath;
+    public int ImageHeight { get; } = imageHeight;
+    public int ImageWidth { get; } = imageWidth;
 
     public string FileName => Path.GetFileName(FilePath);
     public bool IsVideo => Kind == MediaKind.Video;

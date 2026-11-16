@@ -22,17 +22,20 @@ public class MediaScanner
         ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".mkv", ".webm", ".3gp"
     };
 
+    /// <summary>
+    /// Gets all files in the current folder and subfolders.
+    /// </summary>
     public List<ScannedFile> Scan(string folderPath)
     {
-        // Currently only interested in going one layer deep and displaying folders from the subfolders.
+        List<ScannedFile> results = new();
         EnumerationOptions options = new()
         {
             RecurseSubdirectories = false,
             MaxRecursionDepth = 1,
             IgnoreInaccessible = true
         };
-        List<ScannedFile> results = new();
 
+        // Scan files in current folder.
         foreach (FileInfo file in new DirectoryInfo(folderPath).EnumerateFiles("*", options))
         {
             string ext = file.Extension;
@@ -45,6 +48,7 @@ public class MediaScanner
             results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath));
         }
 
+        // Scan subfolders and files in subfolders.
         foreach (string subfolder in Directory.GetDirectories(folderPath, "*", SearchOption.TopDirectoryOnly))
         {
             results.Add(new ScannedFile(subfolder, MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, folderPath));
@@ -72,10 +76,7 @@ public class MediaScanner
     }
 
     /// <summary>
-    /// Cheap content identity: file size + SHA-256 of the first and last 64 KB.
-    /// Reading 128 KB per file keeps scans of big video libraries fast, and it is enough to
-    /// recognise the same file after it has been moved or renamed. (Unlike a path, it is also
-    /// something an Android app could compute to match its own copy of a file.)
+    /// Computes the file size + SHA-256 of the first and last 64 KB.
     /// </summary>
     public static string? ComputeFingerprint(string path, MediaKind mediaKind)
     {

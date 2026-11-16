@@ -11,13 +11,6 @@ namespace PhotoTagger.Services;
 
 public sealed record SyncResult(int Added, int Moved, int Updated, int MarkedMissing, int Unreadable);
 
-/// <summary>
-/// All reads/writes of the library. Methods are synchronous; call them from Task.Run.
-/// Rules that protect your tags (they only exist in this database):
-///  - Rows are NEVER deleted because a file disappeared; they are flagged missing and hidden.
-///  - A moved/renamed file is re-linked by fingerprint so it keeps its tags.
-///  - A renamed folder is detected through its re-linked files, so it keeps its tags too.
-/// </summary>
 public sealed class MediaRepository
 {
     #region Variables
@@ -29,22 +22,6 @@ public sealed class MediaRepository
     public MediaRepository(MediaDatabase db) => _db = db;
 
     #endregion
-
-    // ------------------------------------------------------------------
-    // Paths
-    // ------------------------------------------------------------------
-
-    // "C:\Photos" -> "C:\Photos\" so prefix matching can't confuse C:\Photos with C:\Photos2.
-    private static string NormalizeRoot(string path) => Path.GetFullPath(path).TrimEnd('\\', '/') + "\\";
-
-    /// <summary>The directory a file lives in, without a trailing slash (this is how folders are keyed).</summary>
-    internal static string FolderPathOf(string filePath) => (Path.GetDirectoryName(filePath) ?? string.Empty).TrimEnd('\\', '/');
-
-    internal static string FolderNameOf(string folderPath)
-    {
-        string name = Path.GetFileName(folderPath);
-        return name.Length > 0 ? name : folderPath;   // drive roots have no name
-    }
 
     #region SQL Commands
 
@@ -60,8 +37,7 @@ public sealed class MediaRepository
         return cmd;
     }
 
-    private static void Exec(
-        SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
+    private static void Exec(SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
     {
         using var cmd = Cmd(conn, tx, sql, parameters);
 
@@ -78,6 +54,8 @@ public sealed class MediaRepository
     #endregion
 
     #region Root Folder
+
+    private static string NormalizeRoot(string path) => Path.GetFullPath(path).TrimEnd('\\', '/') + "\\";
 
     public List<string> GetRoots()
     {
@@ -100,12 +78,11 @@ public sealed class MediaRepository
 
     #endregion
 
-    // ------------------------------------------------------------------
-    // Sync (scan results -> database)
-    // ------------------------------------------------------------------
+    #region Sync
 
     private sealed record ExistingRow(long Id, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, bool IsMissing);
     private sealed record RelinkCandidate(long MediaId, bool IsFolder);
+
 
     public SyncResult SyncRoot(string root, IReadOnlyList<ScannedFile> files, IProgress<(int Done, int Total)>? progress = null)
     {
@@ -130,29 +107,19 @@ public sealed class MediaRepository
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var claimedIds = new HashSet<long>();   // media rows re-linked to a new path during this scan
+        var claimedIds = new HashSet<long>();
         long now = DateTime.UtcNow.Ticks;
         int done = 0;
 
-        // 2. Walk the files found on disk.
         foreach (var file in files)
         {
             seen.Add(file.Path);
-
-            // TODO
-            //if (file.MediaKind == MediaKind.Folder)
-            //{
-            //    // Folders are only added to the database if they contain files, so we don't need to
-            //    // create a row for every empty folder. (The folder's row will be created when the
-            //    // first file is added to it.)
-            //    int xxx = 0;
-            //}
 
             try
             {
                 if (existing.TryGetValue(file.Path, out var row))
                 {
-                    if (row.SizeBytes == file.SizeBytes && row.ModifiedUtc == file.ModifiedUtc && row.IsMissing) // TODO - Test this
+                    if (row.SizeBytes == file.SizeBytes && row.ModifiedUtc == file.ModifiedUtc && row.IsMissing)
                     {
                         Exec(conn, tx, "UPDATE media SET is_missing = 0 WHERE id = @id", ("@id", row.Id));
                     }
@@ -168,10 +135,12 @@ public sealed class MediaRepository
 
                         Exec(conn, tx, @"
                             UPDATE media
-                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, is_missing = 0, folder_path = @folder_path
+                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, is_missing = 0, 
+                                folder_path = @folder_path, image_height = @image_height, image_width = @image_width
                             WHERE id = @id",
                             ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtc),
-                            ("@fingerprint", fingerprint), ("@id", row.Id), ("@folder_path", file.FolderPath));
+                            ("@fingerprint", fingerprint), ("@id", row.Id), ("@folder_path", file.FolderPath),
+                            ("@image_height", 0), ("@image_width", 0));
                         updated++;
                     }
                 }
@@ -190,10 +159,11 @@ public sealed class MediaRepository
                     {
                         Exec(conn, tx, @"
                             UPDATE media 
-                            SET path = @path, name = @name, modified_utc = @modified_utc, is_missing = 0 , folder_path = @folder_path
+                            SET path = @path, name = @name, modified_utc = @modified_utc, is_missing = 0, folder_path = @folder_path, image_height = @image_height, image_width = @image_width
                             WHERE id = @id",
                             ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
-                            ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId), ("@folder_path", file.FolderPath));
+                            ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId), ("@folder_path", file.FolderPath),
+                            ("@image_height", 0), ("@image_width", 0));
 
                         claimedIds.Add(candidate.MediaId);
                         moved++;
@@ -201,13 +171,13 @@ public sealed class MediaRepository
                     else
                     {
                         Exec(conn, tx, @"
-                            INSERT INTO media (path, name, media_kind, size_bytes, modified_utc, fingerprint, added_utc, is_folder, folder_path)
-                            VALUES (@path, @name, @media_kind, @size_bytes, @modified_utc, @fingerprint, @added_utc, @is_folder, @folder_path)",
+                            INSERT INTO media (path, name, media_kind, size_bytes, modified_utc, fingerprint, added_utc, is_folder, folder_path, image_height, image_width)
+                            VALUES (@path, @name, @media_kind, @size_bytes, @modified_utc, @fingerprint, @added_utc, @is_folder, @folder_path, @image_height, @image_width)",
                             ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
                             ("@media_kind", (int)file.MediaKind), ("@size_bytes", file.SizeBytes),
                             ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint),
                             ("@added_utc", now), ("@is_folder", file.MediaKind == MediaKind.Folder ? 1 : 0),
-                            ("@folder_path", file.FolderPath)); // TODO - Test folder path - moving out of folder
+                            ("@folder_path", file.FolderPath), ("@image_height", 0), ("@image_width", 0)); // TODO - Test folder path - moving out of folder
 
                         added++;
                     }
@@ -219,7 +189,7 @@ public sealed class MediaRepository
             progress?.Report((++done, files.Count));
         }
 
-        // 3. Files under this root that weren't found: flag them, never delete them.
+        // Files under this root that weren't found flag them as missing.
         foreach (var (path, row) in existing)
         {
             if (seen.Contains(path) || row.IsMissing || claimedIds.Contains(row.Id))
@@ -233,8 +203,7 @@ public sealed class MediaRepository
         return new SyncResult(added, moved, updated, missing, unreadable);
     }
 
-    // A row with identical content whose file no longer exists at its recorded path.
-    // (A row whose file still exists is a genuine copy and gets its own, separately tagged row.)
+    // A row with identical content whose file no longer exists at its recorded path (A row whose file still exists is a genuine copy and gets its own, separately tagged row.)
     private static RelinkCandidate? FindRelinkCandidate(SqliteConnection conn, SqliteTransaction tx, string fingerprint, long size, string newPath, MediaKind mediaKind)
     {
         using var cmd = Cmd(conn, tx, @"
@@ -254,29 +223,19 @@ public sealed class MediaRepository
         return null;
     }
 
-    public void UpdateFolderThumbnail(long id, string newPath)
-    {
-        StringBuilder sql = new("UPDATE media SET folder_thumbnail_path = @folder_thumbnail_path WHERE id = @id");
+    #endregion
 
-        List<(string, object?)> ps = new();
-        ps.Add(("@folder_thumbnail_path", newPath));
-        ps.Add(("@id", id));
+    #region Media
 
-        using var conn = _db.Open();
-        using var cmd = Cmd(conn, null, sql.ToString(), ps.ToArray());
-        using var r = cmd.ExecuteReader();
-    }
+    #region Queries
 
-    // ------------------------------------------------------------------
-    // Filtering: files
-    // ------------------------------------------------------------------
-
-    public List<MediaItem> Query(MediaFilter filter)
+    public List<MediaItem> QueryMedia(MediaFilter filter)
     {
         StringBuilder sql = new(@"
-            SELECT m.id, m.path, m.media_kind, IFNULL(m.folder_thumbnail_path, '')
+            SELECT m.id, m.path, m.media_kind, IFNULL(m.folder_thumbnail_path, ''), IFNULL(m.image_height, 0), IFNULL(m.image_width, 0)
             FROM media m 
             WHERE m.is_missing = 0 ");
+
         List<(string, object?)> ps = new();
 
         if (filter.FolderPath is not null && filter.FolderPath.Count() != 0)
@@ -325,7 +284,32 @@ public sealed class MediaRepository
             ps.Add(("@is_folder", isFolder ? 1 : 0));
         }
 
-        AppendTagFilter(sql, ps, filter);
+        if (filter.UntaggedOnly is not null && filter.UntaggedOnly == true)
+        {
+            sql.Append($" AND NOT EXISTS (SELECT 1 FROM media_tags x WHERE x.media_id = m.id)");
+        }
+        else if (filter.Tags is not null && filter.Tags.Count > 0)
+        {
+            var names = filter.Tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var placeholders = new List<string>();
+
+            for (int i = 0; i < names.Count; i++)
+            {
+                placeholders.Add("@t" + i);
+                ps.Add(("@t" + i, names[i]));
+            }
+
+            sql.Append($@" AND m.id IN (SELECT l.media_id FROM media_tags l JOIN tags t ON t.id = l.tag_id
+                        WHERE t.name IN (").Append(string.Join(",", placeholders)).Append($") GROUP BY l.media_id");
+
+            if (filter.MatchAllTags is not null && filter.MatchAllTags == true)
+            {
+                sql.Append(" HAVING COUNT(*) = @name_count");
+                ps.Add(("@name_count", names.Count));
+            }
+
+            sql.Append(")");
+        }
 
         sql.Append(" ORDER BY m.path COLLATE NOCASE ");
 
@@ -336,61 +320,35 @@ public sealed class MediaRepository
         var items = new List<MediaItem>();
         int index = 0;
         while (r.Read())
-            items.Add(new MediaItem(index++, r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2), r.GetString(3)));
-
+            items.Add(new MediaItem(index++, r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2), r.GetString(3), r.GetInt32(4), r.GetInt32(5)));
 
         return items;
     }
 
-    // Shared by both queries. idExpression is the row id being filtered (m.id or f.id).
-    // The table/column names are fixed strings from this file, never user input.
-    private static void AppendTagFilter(StringBuilder sql, List<(string, object?)> ps, MediaFilter filter)
+    #endregion
+
+    #region Updates
+
+    public void UpdateFolderThumbnail(long id, string newPath)
     {
-        if (filter.UntaggedOnly is not null && filter.UntaggedOnly == true)
-        {
-            sql.Append($" AND NOT EXISTS (SELECT 1 FROM media_tags x WHERE x.media_id = m.id)");
-            return;
-        }
+        StringBuilder sql = new("UPDATE media SET folder_thumbnail_path = @folder_thumbnail_path WHERE id = @id");
 
-        if (filter.Tags is null || filter.Tags.Count == 0)
-            return;
+        List<(string, object?)> ps = new();
+        ps.Add(("@folder_thumbnail_path", newPath));
+        ps.Add(("@id", id));
 
-        // Tag names are NOCASE in the table, so "Beach" and "beach" are the same tag.
-        var names = filter.Tags.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var placeholders = new List<string>();
-
-        for (int i = 0; i < names.Count; i++)
-        {
-            placeholders.Add("@t" + i);
-            ps.Add(("@t" + i, names[i]));
-        }
-
-        sql.Append($" AND m.id IN (SELECT l.media_id FROM media_tags l JOIN tags t ON t.id = l.tag_id ")
-           .Append("WHERE t.name IN (").Append(string.Join(",", placeholders)).Append($") GROUP BY l.media_id");
-
-        if (filter.MatchAllTags is not null && filter.MatchAllTags == true)
-        {
-            sql.Append(" HAVING COUNT(*) = @name_count");
-            ps.Add(("@name_count", names.Count));
-        }
-
-        sql.Append(")");
+        using var conn = _db.Open();
+        using var tx = conn.BeginTransaction();
+        Exec(conn, tx, sql.ToString(), ps.ToArray());
     }
 
-    private static string EscapeLike(string text) => text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+    #endregion
 
-    // ------------------------------------------------------------------
-    // Tags (shared by files and folders)
-    // ------------------------------------------------------------------
+    #endregion
 
-    /// <summary>Trims, collapses inner whitespace, caps the length. Commas and symbols are fine.</summary>
-    public static string NormalizeTag(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+    #region Tags
 
-        string tag = Regex.Replace(raw.Trim(), @"\s+", " ");
-        return tag.Length > MaxTagLength ? tag.Substring(0, MaxTagLength).TrimEnd() : tag;
-    }
+    #region Queries
 
     public List<string> GetTags(long id)
     {
@@ -433,40 +391,8 @@ public sealed class MediaRepository
         var tags = new List<TagInfo>();
         while (r.Read())
             tags.Add(new TagInfo(r.GetInt64(0), r.GetString(1), r.GetInt32(2)));
+
         return tags;
-    }
-
-    /// <summary>Tags in use by files (or by folders), with counts. Unused tags are not listed.</summary>
-    public List<FolderInfo> GetFolders(string folderNameFilter = "")
-    {
-        (string Name, object? Value)[] parameters = [($"@{nameof(folderNameFilter)}", "%" + folderNameFilter + "%")];
-
-        StringBuilder sql = new(@$"
-            SELECT m.folder_path, COUNT(1)
-            FROM media m
-            WHERE m.folder_path IS NOT NULL");
-
-        if (folderNameFilter != "")
-            sql.Append($" AND m.folder_path LIKE @{nameof(folderNameFilter)} ");
-
-        sql.Append($@"
-            GROUP BY m.folder_path 
-            ORDER BY m.folder_path COLLATE NOCASE");
-
-        using var conn = _db.Open();
-        using var cmd = Cmd(conn, null, sql.ToString(), parameters);
-        using var r = cmd.ExecuteReader();
-
-        List<FolderInfo> folders = new();
-        while (r.Read())
-        {
-            if (r.GetString(0) is not null)
-            {
-                folders.Add(new FolderInfo(r.GetInt64(1), r.GetString(0).Substring(r.GetString(0).Substring(0, r.GetString(0).LastIndexOf("\\")).LastIndexOf("\\") + 1)));
-            }
-        }
-
-        return folders;
     }
 
     /// <summary>Every tag name, for autocomplete (a tag used on folders can be reused on files and vice versa).</summary>
@@ -480,6 +406,10 @@ public sealed class MediaRepository
         while (r.Read()) names.Add(r.GetString(0));
         return names;
     }
+
+    #endregion
+
+    #region Updates
 
     /// <summary>Adds a tag to one or many files/folders in a single transaction. Re-adding is a no-op.</summary>
     public void AddTag(IReadOnlyCollection<long> ids, string tag)
@@ -499,8 +429,7 @@ public sealed class MediaRepository
 
         foreach (long id in ids)
         {
-            Exec(conn, tx, $"INSERT OR IGNORE INTO media_tags(media_id, tag_id) VALUES (@id, @tagId)",
-                ("@id", id), ("@tagId", tagId));
+            Exec(conn, tx, $"INSERT OR IGNORE INTO media_tags(media_id, tag_id) VALUES (@id, @tagId)", ("@id", id), ("@tagId", tagId));
         }
 
         tx.Commit();
@@ -528,4 +457,60 @@ public sealed class MediaRepository
 
         tx.Commit();
     }
+
+    #endregion
+
+    #region Helpers
+
+    private static string EscapeLike(string text) => text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
+    /// <summary>Trims, collapses inner whitespace, caps the length. Commas and symbols are fine.</summary>
+    public static string NormalizeTag(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+
+        string tag = Regex.Replace(raw.Trim(), @"\s+", " ");
+        return tag.Length > MaxTagLength ? tag.Substring(0, MaxTagLength).TrimEnd() : tag;
+    }
+
+    #endregion
+
+    #endregion
+
+    #region Folders
+
+    #region Queries
+
+    /// <summary>Tags in use by files (or by folders), with counts. Unused tags are not listed.</summary>
+    public List<FolderInfo> GetFolders(string folderNameFilter = "")
+    {
+        (string Name, object? Value)[] parameters = [($"@{nameof(folderNameFilter)}", "%" + folderNameFilter + "%")];
+
+        StringBuilder sql = new(@$"
+            SELECT m.folder_path, COUNT(1)
+            FROM media m
+            WHERE m.folder_path IS NOT NULL");
+
+        if (folderNameFilter != "")
+            sql.Append($" AND m.folder_path LIKE @{nameof(folderNameFilter)} ");
+
+        sql.Append($@"
+            GROUP BY m.folder_path 
+            ORDER BY m.folder_path COLLATE NOCASE");
+
+        using var conn = _db.Open();
+        using var cmd = Cmd(conn, null, sql.ToString(), parameters);
+        using var r = cmd.ExecuteReader();
+
+        List<FolderInfo> folders = new();
+        while (r.Read())
+            if (r.GetString(0) is not null)
+                folders.Add(new FolderInfo(r.GetInt64(1), r.GetString(0).Substring(r.GetString(0).Substring(0, r.GetString(0).LastIndexOf("\\")).LastIndexOf("\\") + 1)));
+
+        return folders;
+    }
+
+    #endregion
+
+    #endregion
 }

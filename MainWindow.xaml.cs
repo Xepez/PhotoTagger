@@ -19,35 +19,43 @@ namespace PhotoTagger
 {
     public sealed partial class MainWindow : Window
     {
+        #region Variables
+
         // Data
         private readonly MediaDatabase _db = new();
         private readonly MediaRepository _repo;
         private readonly MediaScanner _scanner = new();
+
 
         // Services
         private readonly ThumbnailService _thumbnailService = new();
         private readonly PreviewService _previewService = new();
         private readonly SemaphoreSlim _thumbnailSemaphore = new(6);
 
-        // UI state. The tag list is real data; the UI just displays it.
-        private MediaItem _currentMediaSelected;
 
+        // UI state
+
+        // Current selection and filter state
+        private MediaItem _currentMediaSelected;
+        private List<MediaItem> _currentFolderSubMedia = new();
+        private int _folderIndex = -1;
         private readonly ObservableCollection<string> _currentTags = new();
+
+        // All values
         private List<string> _allTagNames = new();
         private List<string> _allFolderNames = new();
 
-        // The files of the folder currently selected in folder mode, in Explorer order.
-        private List<MediaItem> _folderMedia = new();
-        private int _folderIndex = -1;
-
-        private bool _filtersReady;       // false while the window is starting / controls are being reset
-        private bool _updatingTagList;    // true while we rebuild the sidebar tag list ourselves
-        private bool _updatingFolderList; // true while we rebuild the sidebar folder list ourselves
+        // Flags
+        private bool _filtersReady;
+        private bool _updatingTagList;
+        private bool _updatingFolderList;
         private bool _scanning;
 
-        // Each bumps when a newer request starts, so a slow older one can tell it is stale.
+        // Versions
         private int _filterVersion;
         private int _selectionVersion;
+
+        #endregion
 
         public MainWindow()
         {
@@ -63,6 +71,7 @@ namespace PhotoTagger
         }
 
         #region Start Up
+
         private async Task LoadLibraryAsync()
         {
             try
@@ -95,6 +104,7 @@ namespace PhotoTagger
                 _filtersReady = true;
             }
         }
+
         #endregion
 
         #region Header Buttons
@@ -127,6 +137,8 @@ namespace PhotoTagger
             {
                 PopupMessage(true, "Could not add folder: " + ex.Message);
             }
+
+            // TODO - Change Selected Folder Item to currently scanned folder
         }
 
         private async void RescanButton_Click(object sender, RoutedEventArgs e)
@@ -262,7 +274,7 @@ namespace PhotoTagger
 
             try
             {
-                List<MediaItem> items = await Task.Run(() => _repo.Query(filter));
+                List<MediaItem> items = await Task.Run(() => _repo.QueryMedia(filter));
                 if (version != _filterVersion) return;
 
                 // Capture scroll offset and check whether the list is unchanged
@@ -370,7 +382,7 @@ namespace PhotoTagger
         {
             if (!_filtersReady || _currentMediaSelected.Kind != MediaKind.Folder) return;
 
-            _repo.UpdateFolderThumbnail(_currentMediaSelected.Id, _folderMedia[_folderIndex].FilePath);
+            _repo.UpdateFolderThumbnail(_currentMediaSelected.Id, _currentFolderSubMedia[_folderIndex].FilePath);
             _ = ApplyMediaListFilterAsync();
         }
 
@@ -406,6 +418,31 @@ namespace PhotoTagger
         }
 
         #endregion
+
+        private void FilterToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            bool open = FilterContent.Visibility != Visibility.Visible;
+
+            FilterContent.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+            FilterToggleIcon.Glyph = open ? "\uE76B" : "\uE76C";   // chevron left / right
+            ToolTipService.SetToolTip(FilterToggleButton, open ? "Hide filters" : "Show filters");
+        }
+
+        private void PreviewToggleButton_Click(object sender, RoutedEventArgs e)
+        {
+            bool open = PreviewContent.Visibility != Visibility.Visible;
+
+            PreviewContent.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+            PreviewColumn.Width = open ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+            PreviewToggleIcon.Glyph = open ? "\uE76C" : "\uE76B";  // chevron right / left
+            ToolTipService.SetToolTip(PreviewToggleButton, open ? "Hide preview" : "Show preview");
+
+            // Hidden elements keep playing, so stop any video when collapsing
+            if (!open)
+            {
+                PreviewPlayer.MediaPlayer?.Pause();
+            }
+        }
 
         // Rebuilds the sidebar tag list (names + counts for the current mode) and keeps the selection.
         private async Task RefreshTagListAsync()
@@ -596,10 +633,10 @@ namespace PhotoTagger
             try
             {
                 MediaFilter filter = BuildCustomFilter(folderPaths: new List<string>([mediaItem.FilePath]), isFolder: false);
-                List<MediaItem> media = await Task.Run(() => _repo.Query(filter));
+                List<MediaItem> media = await Task.Run(() => _repo.QueryMedia(filter));
                 if (version != _selectionVersion) return;
 
-                _folderMedia = media;
+                _currentFolderSubMedia = media;
 
                 if (media.Count > 0)
                     await ShowFolderIndexAsync(0, version);
@@ -620,7 +657,7 @@ namespace PhotoTagger
             _currentTags.Clear();
             TagInput.Text = "";
 
-            _folderMedia = new List<MediaItem>();
+            _currentFolderSubMedia = new List<MediaItem>();
             _folderIndex = -1;
             UpdateNavigation();
 
@@ -699,26 +736,26 @@ namespace PhotoTagger
             _folderIndex = index;
             UpdateNavigation();
 
-            await ShowPreviewAsync(_folderMedia[index], version);
+            await ShowPreviewAsync(_currentFolderSubMedia[index], version);
         }
 
         private void UpdateNavigation()
         {
-            bool show = _folderMedia.Count > 0 && _folderIndex >= 0;
+            bool show = _currentFolderSubMedia.Count > 0 && _folderIndex >= 0;
 
             FolderNav.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
             PrevButton.IsEnabled = show && _folderIndex > 0;
-            NextButton.IsEnabled = show && _folderIndex < _folderMedia.Count - 1;
+            NextButton.IsEnabled = show && _folderIndex < _currentFolderSubMedia.Count - 1;
 
             NavText.Text = show
-                ? $"{_folderIndex + 1} / {_folderMedia.Count}   ·   {_folderMedia[_folderIndex].FileName}"
+                ? $"{_folderIndex + 1} / {_currentFolderSubMedia.Count}   ·   {_currentFolderSubMedia[_folderIndex].FileName}"
                 : string.Empty;
         }
 
         private async Task NavigateAsync(int delta)
         {
             int newIndex = _folderIndex + delta;
-            if (newIndex < 0 || newIndex >= _folderMedia.Count) return;
+            if (newIndex < 0 || newIndex >= _currentFolderSubMedia.Count) return;
 
             int version = ++_selectionVersion;   // supersedes any preview still loading
             await ShowFolderIndexAsync(newIndex, version); // TODO - Fix
