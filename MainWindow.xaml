@@ -66,116 +66,160 @@
             </Grid.ColumnDefinitions>
 
             <!-- Filter sidebar -->
-            <Grid Grid.Column="0" RowSpacing="8">
+            <ScrollViewer
+                Grid.Column="0"
+                VerticalScrollBarVisibility="Auto"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollMode="Enabled">
 
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+                <Grid RowSpacing="8" Padding="0,0,12,0">
 
-                <!-- File and Type Filtering -->
-                <StackPanel Grid.Row="0" Spacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
-                    <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
-
-                    <TextBox
-                        x:Name="SearchFileNameBox"
-                        PlaceholderText="Search files..."
-                        TextChanged="SearchFileNameBox_TextChanged" />
-
-                    <ComboBox
-                        x:Name="KindFilter"
+                    <!-- Folder Filtering -->
+                    <Expander
+                        Grid.Row="0"
+                        IsExpanded="True"
                         HorizontalAlignment="Stretch"
-                        SelectedIndex="0"
-                        SelectionChanged="KindFilter_SelectionChanged">
-                        <ComboBoxItem Content="All" />
-                        <ComboBoxItem Content="Photos only" />
-                        <ComboBoxItem Content="Videos only" />
-                        <ComboBoxItem Content="Folders only" />
-                    </ComboBox>
+                        HorizontalContentAlignment="Stretch">
 
-                    <ToggleSwitch
-                            x:Name="SearchSubdirectoriesToggle"
-                            MinWidth="0"
-                            VerticalAlignment="Center"
-                            IsOn="False"
-                            OnContent="Include Subdirectories"
-                            OffContent="Current Directory"
-                            Toggled="SearchSubdirectoriesToggle_Changed" />
+                        <Expander.Header>
+                            <TextBlock Text="Folders" FontSize="16" FontWeight="SemiBold" />
+                        </Expander.Header>
 
-                </StackPanel>
+                        <StackPanel Spacing="8">
 
-                <!-- Tag Filters -->
-                <StackPanel Grid.Row="1" Spacing="8">
+                            <TextBox
+                                x:Name="FilterFolderSearchBox"
+                                PlaceholderText="Search folders..."
+                                TextChanged="FilterFolderSearchBox_TextChanged" />
 
-                    <TextBlock
-                        Text="Tags"
-                        FontSize="16"
-                        FontWeight="SemiBold"
-                        Margin="0,12,0,0" />
+                            <ToggleSwitch
+                                x:Name="FilterSelectAllFolders"
+                                MinWidth="0"
+                                IsOn="True"
+                                OnContent="Unselect All"
+                                OffContent="Select All"
+                                Toggled="FilterSelectAllFoldersToggle_Changed" />
 
-                    <Grid ColumnSpacing="8">
+                            <ListView
+                                x:Name="FolderList"
+                                MaxHeight="300"
+                                SelectionMode="Multiple"
+                                DisplayMemberPath="Label"
+                                SelectionChanged="FolderList_SelectionChanged" />
 
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                        </StackPanel>
+                    </Expander>
 
-                        <TextBox
-                            x:Name="FilterTagsSearchBox"
-                            Grid.Column="0"
-                            PlaceholderText="Search tags..."
-                            TextChanged="FilterTagsSearchBox_TextChanged" />
+                    <!-- File and Type Filtering -->
+                    <Expander
+                        Grid.Row="1"
+                        IsExpanded="True"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch">
 
-                        <Button
-                            x:Name="FilterResetButton"
-                            Grid.Column="1"
-                            Content="Clear filters"
-                            VerticalAlignment="Stretch"
-                            Click="ClearFiltersButton_Click" />
+                        <Expander.Header>
+                            <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
+                        </Expander.Header>
 
-                    </Grid>
+                        <StackPanel Spacing="8">
 
-                    <Grid ColumnSpacing="8">
+                            <TextBox
+                                x:Name="SearchFileNameBox"
+                                PlaceholderText="Search files..."
+                                TextChanged="SearchFileNameBox_TextChanged" />
 
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
+                            <ComboBox
+                                x:Name="KindFilter"
+                                HorizontalAlignment="Stretch"
+                                SelectedIndex="0"
+                                SelectionChanged="KindFilter_SelectionChanged">
+                                <ComboBoxItem Content="All" />
+                                <ComboBoxItem Content="Photos only" />
+                                <ComboBoxItem Content="Videos only" />
+                                <ComboBoxItem Content="Folders only" />
+                            </ComboBox>
 
-                        <CheckBox
-                            x:Name="UntaggedOnly"
-                            Grid.Column="0"
-                            Content="Untagged Only"
-                            MinWidth="0"
-                            VerticalAlignment="Center"
-                            Checked="FilterTagToggle_Changed"
-                            Unchecked="FilterTagToggle_Changed" />
+                        </StackPanel>
+                    </Expander>
 
-                        <ToggleSwitch
-                            x:Name="MatchAllToggle"
-                            Grid.Column="1"
-                            MinWidth="0"
-                            VerticalAlignment="Center"
-                            IsOn="True"
-                            OnContent="ALL tags"
-                            OffContent="ANY tags"
-                            Toggled="FilterTagToggle_Changed" />
+                    <!-- Tag Filters -->
+                    <Expander
+                        Grid.Row="2"
+                        IsExpanded="True"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch">
 
-                    </Grid>
+                        <Expander.Header>
+                            <TextBlock Text="Tags" FontSize="16" FontWeight="SemiBold" />
+                        </Expander.Header>
 
-                </StackPanel>
+                        <StackPanel Spacing="8">
 
-                <!-- Tags List -->
-                <ListView
-                    x:Name="TagList"
-                    Grid.Row="2"
-                    SelectionMode="Multiple"
-                    DisplayMemberPath="Label"
-                    SelectionChanged="TagList_SelectionChanged" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-            </Grid>
+                                <TextBox
+                                    x:Name="FilterTagsSearchBox"
+                                    Grid.Column="0"
+                                    PlaceholderText="Search tags..."
+                                    TextChanged="FilterTagsSearchBox_TextChanged" />
+
+                                <Button
+                                    x:Name="FilterResetButton"
+                                    Grid.Column="1"
+                                    Content="Clear filters"
+                                    VerticalAlignment="Stretch"
+                                    Click="ClearFiltersButton_Click" />
+                            </Grid>
+
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox
+                                    x:Name="UntaggedOnly"
+                                    Grid.Column="0"
+                                    Content="Untagged Only"
+                                    MinWidth="0"
+                                    VerticalAlignment="Center"
+                                    Checked="FilterTagToggle_Changed"
+                                    Unchecked="FilterTagToggle_Changed" />
+
+                                <ToggleSwitch
+                                    x:Name="MatchAllToggle"
+                                    Grid.Column="1"
+                                    MinWidth="0"
+                                    VerticalAlignment="Center"
+                                    IsOn="True"
+                                    OnContent="ALL tags"
+                                    OffContent="ANY tags"
+                                    Toggled="FilterTagToggle_Changed" />
+                            </Grid>
+
+                            <!-- Tags List -->
+                            <ListView
+                                x:Name="TagList"
+                                MaxHeight="400"
+                                SelectionMode="Multiple"
+                                DisplayMemberPath="Label"
+                                SelectionChanged="TagList_SelectionChanged" />
+
+                        </StackPanel>
+                    </Expander>
+
+                </Grid>
+            </ScrollViewer>
 
             <!-- Photo/video grid -->
             <GridView
@@ -199,13 +243,35 @@
                                         Source="{Binding Thumbnail}"
                                         Stretch="UniformToFill" />
 
-                                    <FontIcon
-                                        Glyph="&#xE714;"
-                                        FontSize="16"
+                                    <!-- Video badge -->
+                                    <Border
+                                        Background="#99000000"
+                                        CornerRadius="6"
+                                        Padding="4"
                                         Margin="6"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Bottom"
-                                        Visibility="{Binding VideoBadgeVisibility}" />
+                                        Visibility="{Binding VideoBadgeVisibility}">
+                                        <FontIcon
+                                            Glyph="&#xE714;"
+                                            Foreground="White"
+                                            FontSize="20" />
+                                    </Border>
+
+                                    <!-- Folder badge -->
+                                    <Border
+                                        Background="#99000000"
+                                        CornerRadius="6"
+                                        Padding="4"
+                                        Margin="6"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        Visibility="{Binding FolderBadgeVisibility}">
+                                        <FontIcon
+                                            Glyph="&#xE8B7;"
+                                            Foreground="White"
+                                            FontSize="20" />
+                                    </Border>
                                 </Grid>
 
                             </Border>
@@ -311,6 +377,15 @@
                             Margin="0,4,0,0"
                             Opacity="0.7"
                             TextWrapping="Wrap" />
+
+                        <Button
+                            x:Name="SaveFolderThumbnail"
+                            Click="SaveFolderThumbnail_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                                <TextBlock Text=" Save To Folder Thumbnail" />
+                            </StackPanel>
+                        </Button>
 
                         <TextBlock
                             Text="Tags"

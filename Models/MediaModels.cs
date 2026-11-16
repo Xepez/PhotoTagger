@@ -32,11 +32,13 @@ public interface IThumbnailItem
 }
 
 /// <summary>One photo or video in the library (a row in the media table).</summary>
-public class MediaItem : INotifyPropertyChanged, IThumbnailItem
+public partial class MediaItem(int index, long id, string filePath, MediaKind kind, string folderThumbnailPath) : INotifyPropertyChanged, IThumbnailItem
 {
-    public long Id { get; }
-    public string FilePath { get; }
-    public MediaKind Kind { get; }
+    public int Index { get; } = index;
+    public long Id { get; } = id;
+    public string FilePath { get; } = filePath;
+    public MediaKind Kind { get; } = kind;
+    public string FolderThumbnailPath { get; } = folderThumbnailPath;
 
     public string FileName => Path.GetFileName(FilePath);
     public bool IsVideo => Kind == MediaKind.Video;
@@ -44,7 +46,7 @@ public class MediaItem : INotifyPropertyChanged, IThumbnailItem
     public Visibility VideoBadgeVisibility => IsVideo ? Visibility.Visible : Visibility.Collapsed;
     public Visibility FolderBadgeVisibility => IsFolder ? Visibility.Visible : Visibility.Collapsed;
 
-    string? IThumbnailItem.ThumbnailSourcePath => FilePath;
+    string? IThumbnailItem.ThumbnailSourcePath => Kind == MediaKind.Folder ? FolderThumbnailPath : FilePath;
     MediaKind IThumbnailItem.ThumbnailKind => Kind;
 
     // Used by the thumbnail loader so one item isn't loaded twice at once.
@@ -62,13 +64,6 @@ public class MediaItem : INotifyPropertyChanged, IThumbnailItem
         }
     }
 
-    public MediaItem(long id, string filePath, MediaKind kind)
-    {
-        Id = id;
-        FilePath = filePath;
-        Kind = kind;
-    }
-
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
@@ -81,6 +76,9 @@ public sealed record TagInfo(long Id, string Name, int Count)
     public string Label => $"{Name} ({Count})";
 }
 
+/// <summary>A tag and how many items (or folders) use it. Shown in the filter sidebar.</summary>
+public sealed record FolderInfo(long Id, string Label);
+
 /// <summary>
 /// Everything the filter sidebar can ask for. All parts are combined with AND.
 /// For folders, Text matches anywhere in the folder path and Kind is ignored.
@@ -89,7 +87,10 @@ public sealed class MediaFilter
 {
     public string? Text { get; init; }
     public MediaKind? MediaKind { get; init; }                 // null = photos and videos
-    public bool UntaggedOnly { get; init; }               // when true, Tags is ignored
-    public bool MatchAllTags { get; init; } = true;       // true = AND, false = OR
-    public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+    public bool? UntaggedOnly { get; init; }               // when true, Tags is ignored
+    public bool? MatchAllTags { get; init; } = true;       // true = AND, false = OR
+    public IReadOnlyList<string>? Tags { get; init; } = Array.Empty<string>();
+    public string? Path { get; init; }
+    public IReadOnlyList<string>? FolderPath { get; init; } = Array.Empty<string>();
+    public bool? IsFolder { get; init; } = null;
 }

@@ -104,11 +104,18 @@ public sealed class MediaDatabase
                 fingerprint  TEXT       NOT NULL,           -- size + head/tail hash; survives moves/renames
                 is_missing   TINYINT(1) NOT NULL DEFAULT 0, -- 1 = not found on last scan (tags are kept)
                 added_utc    INTEGER    NOT NULL,
-                is_folder    TINYINT(1) NOT NULL DEFAULT 0,
-                folder_path  TEXT       NULL
+                is_folder    TINYINT(1) NOT NULL DEFAULT 0, -- replace with folder_id when change to folder table
+                folder_path  TEXT       NULL,
+                folder_thumbnail_path TEXT NULL -- remove when change to folder table
             );
             CREATE INDEX idx_media_fingerprint ON media(fingerprint, size_bytes);
             CREATE INDEX idx_media_kind ON media(media_kind);
+
+            CREATE TABLE folder (
+                folder_id               INTEGER PRIMARY KEY,
+                folder_path             TEXT    NOT NULL,
+                folder_thumbnail_path   TEXT    NULL
+            );
 
             CREATE TABLE tags (
                 id   INTEGER PRIMARY KEY,

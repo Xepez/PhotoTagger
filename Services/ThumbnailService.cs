@@ -26,8 +26,7 @@ public class ThumbnailService
                 ? ThumbnailMode.VideosView
                 : ThumbnailMode.PicturesView;
 
-            using StorageItemThumbnail thumbnail =
-                await file.GetThumbnailAsync(mode, 320, ThumbnailOptions.UseCurrentScale);
+            using StorageItemThumbnail thumbnail = await file.GetThumbnailAsync(mode, 320, ThumbnailOptions.UseCurrentScale);
 
             if (thumbnail == null || thumbnail.Size == 0)
                 return null;

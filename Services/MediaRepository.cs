@@ -64,7 +64,15 @@ public sealed class MediaRepository
         SqliteConnection conn, SqliteTransaction? tx, string sql, params (string Name, object? Value)[] parameters)
     {
         using var cmd = Cmd(conn, tx, sql, parameters);
-        cmd.ExecuteNonQuery();
+
+        try
+        {
+            cmd.ExecuteNonQuery();
+        }
+        catch (SqliteException ex)
+        {
+            throw new Exception($"SQL error: {ex.Message}\n{sql}", ex);
+        }
     }
 
     #endregion
@@ -160,9 +168,10 @@ public sealed class MediaRepository
 
                         Exec(conn, tx, @"
                             UPDATE media
-                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, is_missing = 0
+                            SET size_bytes = @size_bytes, modified_utc = @modified_utc, fingerprint = @fingerprint, is_missing = 0, folder_path = @folder_path
                             WHERE id = @id",
-                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint), ("@id", row.Id));
+                            ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtc),
+                            ("@fingerprint", fingerprint), ("@id", row.Id), ("@folder_path", file.FolderPath));
                         updated++;
                     }
                 }
@@ -181,10 +190,10 @@ public sealed class MediaRepository
                     {
                         Exec(conn, tx, @"
                             UPDATE media 
-                            SET path = @path, name = @name, modified_utc = @modified_utc, is_missing = 0 
+                            SET path = @path, name = @name, modified_utc = @modified_utc, is_missing = 0 , folder_path = @folder_path
                             WHERE id = @id",
                             ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
-                            ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId));
+                            ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId), ("@folder_path", file.FolderPath));
 
                         claimedIds.Add(candidate.MediaId);
                         moved++;
@@ -198,7 +207,7 @@ public sealed class MediaRepository
                             ("@media_kind", (int)file.MediaKind), ("@size_bytes", file.SizeBytes),
                             ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint),
                             ("@added_utc", now), ("@is_folder", file.MediaKind == MediaKind.Folder ? 1 : 0),
-                            ("folder_path", file.FolderPath)); // TODO - Test folder path - moving out of folder
+                            ("@folder_path", file.FolderPath)); // TODO - Test folder path - moving out of folder
 
                         added++;
                     }
@@ -245,55 +254,105 @@ public sealed class MediaRepository
         return null;
     }
 
+    public void UpdateFolderThumbnail(long id, string newPath)
+    {
+        StringBuilder sql = new("UPDATE media SET folder_thumbnail_path = @folder_thumbnail_path WHERE id = @id");
+
+        List<(string, object?)> ps = new();
+        ps.Add(("@folder_thumbnail_path", newPath));
+        ps.Add(("@id", id));
+
+        using var conn = _db.Open();
+        using var cmd = Cmd(conn, null, sql.ToString(), ps.ToArray());
+        using var r = cmd.ExecuteReader();
+    }
+
     // ------------------------------------------------------------------
     // Filtering: files
     // ------------------------------------------------------------------
 
     public List<MediaItem> Query(MediaFilter filter)
     {
-        var sql = new StringBuilder("SELECT m.id, m.path, m.media_kind FROM media m WHERE m.is_missing = 0");
-        var ps = new List<(string, object?)>();
+        StringBuilder sql = new(@"
+            SELECT m.id, m.path, m.media_kind, IFNULL(m.folder_thumbnail_path, '')
+            FROM media m 
+            WHERE m.is_missing = 0 ");
+        List<(string, object?)> ps = new();
+
+        if (filter.FolderPath is not null && filter.FolderPath.Count() != 0)
+        {
+            sql.Append(" AND (");
+
+            for (int x = 0; x < filter.FolderPath.Count(); x++)
+            {
+                sql.Append($" m.folder_path LIKE @folder_path{x} ESCAPE '\\' ");
+                ps.Add(($"@folder_path{x}", "%" + EscapeLike(filter.FolderPath[x])));
+
+                if (x < filter.FolderPath.Count() - 1)
+                {
+                    sql.Append(" OR ");
+                }
+            }
+
+            sql.Append(") ");
+        }
+        else
+        {
+            return new List<MediaItem>();
+        }
 
         if (filter.MediaKind is MediaKind mediaKind)
         {
-            sql.Append(" AND m.media_kind = @media_kind");
+            sql.Append(" AND m.media_kind = @media_kind ");
             ps.Add(("@media_kind", (int)mediaKind));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Text))
         {
-            sql.Append(" AND m.name LIKE @text ESCAPE '\\'");
+            sql.Append(" AND m.name LIKE @text ESCAPE '\\' ");
             ps.Add(("@text", "%" + EscapeLike(filter.Text.Trim()) + "%"));
         }
 
-        AppendTagFilter(sql, ps, filter, "m.id", "media_tags", "media_id");
+        if (!string.IsNullOrWhiteSpace(filter.Path))
+        {
+            sql.Append(" AND m.path LIKE @path ESCAPE '\\' ");
+            ps.Add(("@path", "%" + filter.Path + "%"));
+        }
 
-        sql.Append(" ORDER BY m.path COLLATE NOCASE");
+        if (filter.IsFolder is bool isFolder)
+        {
+            sql.Append(" AND m.is_folder = @is_folder ");
+            ps.Add(("@is_folder", isFolder ? 1 : 0));
+        }
+
+        AppendTagFilter(sql, ps, filter);
+
+        sql.Append(" ORDER BY m.path COLLATE NOCASE ");
 
         using var conn = _db.Open();
         using var cmd = Cmd(conn, null, sql.ToString(), ps.ToArray());
         using var r = cmd.ExecuteReader();
 
         var items = new List<MediaItem>();
+        int index = 0;
         while (r.Read())
-            items.Add(new MediaItem(r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2)));
+            items.Add(new MediaItem(index++, r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2), r.GetString(3)));
+
 
         return items;
     }
 
     // Shared by both queries. idExpression is the row id being filtered (m.id or f.id).
     // The table/column names are fixed strings from this file, never user input.
-    private static void AppendTagFilter(
-        StringBuilder sql, List<(string, object?)> ps, MediaFilter filter,
-        string idExpression, string linkTable, string linkColumn)
+    private static void AppendTagFilter(StringBuilder sql, List<(string, object?)> ps, MediaFilter filter)
     {
-        if (filter.UntaggedOnly)
+        if (filter.UntaggedOnly is not null && filter.UntaggedOnly == true)
         {
-            sql.Append($" AND NOT EXISTS (SELECT 1 FROM {linkTable} x WHERE x.{linkColumn} = {idExpression})");
+            sql.Append($" AND NOT EXISTS (SELECT 1 FROM media_tags x WHERE x.media_id = m.id)");
             return;
         }
 
-        if (filter.Tags.Count == 0)
+        if (filter.Tags is null || filter.Tags.Count == 0)
             return;
 
         // Tag names are NOCASE in the table, so "Beach" and "beach" are the same tag.
@@ -306,26 +365,23 @@ public sealed class MediaRepository
             ps.Add(("@t" + i, names[i]));
         }
 
-        sql.Append($" AND {idExpression} IN (SELECT l.{linkColumn} FROM {linkTable} l JOIN tags t ON t.id = l.tag_id ")
-           .Append("WHERE t.name IN (").Append(string.Join(",", placeholders)).Append($") GROUP BY l.{linkColumn}");
+        sql.Append($" AND m.id IN (SELECT l.media_id FROM media_tags l JOIN tags t ON t.id = l.tag_id ")
+           .Append("WHERE t.name IN (").Append(string.Join(",", placeholders)).Append($") GROUP BY l.media_id");
 
-        if (filter.MatchAllTags)
+        if (filter.MatchAllTags is not null && filter.MatchAllTags == true)
         {
-            sql.Append(" HAVING COUNT(*) = @n");
-            ps.Add(("@n", names.Count));
+            sql.Append(" HAVING COUNT(*) = @name_count");
+            ps.Add(("@name_count", names.Count));
         }
 
         sql.Append(")");
     }
 
-    private static string EscapeLike(string text) =>
-        text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+    private static string EscapeLike(string text) => text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
     // ------------------------------------------------------------------
     // Tags (shared by files and folders)
     // ------------------------------------------------------------------
-
-    private static (string Table, string Column, string Parent) Link() => ("media_tags", "media_id", "media");
 
     /// <summary>Trims, collapses inner whitespace, caps the length. Commas and symbols are fine.</summary>
     public static string NormalizeTag(string? raw)
@@ -338,12 +394,12 @@ public sealed class MediaRepository
 
     public List<string> GetTags(long id)
     {
-        var (table, column, _) = Link();
-
         using var conn = _db.Open();
-        using var cmd = Cmd(conn, null,
-            $"SELECT t.name FROM {table} l JOIN tags t ON t.id = l.tag_id " +
-            $"WHERE l.{column} = @id ORDER BY t.name COLLATE NOCASE",
+        using var cmd = Cmd(conn, null, @$"
+            SELECT t.name 
+            FROM media_tags l 
+            JOIN tags t ON t.id = l.tag_id
+            WHERE l.media_id = @id ORDER BY t.name COLLATE NOCASE",
             ("@id", id));
         using var r = cmd.ExecuteReader();
 
@@ -355,15 +411,13 @@ public sealed class MediaRepository
     /// <summary>Tags in use by files (or by folders), with counts. Unused tags are not listed.</summary>
     public List<TagInfo> GetTagsWithCounts(string tagNameFilter = "")
     {
-        var (table, column, parent) = Link();
-
         (string Name, object? Value)[] parameters = [($"@{nameof(tagNameFilter)}", "%" + tagNameFilter + "%")];
 
         StringBuilder sql = new(@$"
             SELECT t.id, t.name, COUNT(*)
             FROM tags t
-            JOIN {table} l ON l.tag_id = t.id
-            JOIN {parent} x ON x.id = l.{column} AND x.is_missing = 0");
+            JOIN media_tags l ON l.tag_id = t.id
+            JOIN media x ON x.id = l.media_id AND x.is_missing = 0");
 
         if (tagNameFilter != "")
             sql.Append($" WHERE t.name LIKE @{nameof(tagNameFilter)} ");
@@ -380,6 +434,39 @@ public sealed class MediaRepository
         while (r.Read())
             tags.Add(new TagInfo(r.GetInt64(0), r.GetString(1), r.GetInt32(2)));
         return tags;
+    }
+
+    /// <summary>Tags in use by files (or by folders), with counts. Unused tags are not listed.</summary>
+    public List<FolderInfo> GetFolders(string folderNameFilter = "")
+    {
+        (string Name, object? Value)[] parameters = [($"@{nameof(folderNameFilter)}", "%" + folderNameFilter + "%")];
+
+        StringBuilder sql = new(@$"
+            SELECT m.folder_path, COUNT(1)
+            FROM media m
+            WHERE m.folder_path IS NOT NULL");
+
+        if (folderNameFilter != "")
+            sql.Append($" AND m.folder_path LIKE @{nameof(folderNameFilter)} ");
+
+        sql.Append($@"
+            GROUP BY m.folder_path 
+            ORDER BY m.folder_path COLLATE NOCASE");
+
+        using var conn = _db.Open();
+        using var cmd = Cmd(conn, null, sql.ToString(), parameters);
+        using var r = cmd.ExecuteReader();
+
+        List<FolderInfo> folders = new();
+        while (r.Read())
+        {
+            if (r.GetString(0) is not null)
+            {
+                folders.Add(new FolderInfo(r.GetInt64(1), r.GetString(0).Substring(r.GetString(0).Substring(0, r.GetString(0).LastIndexOf("\\")).LastIndexOf("\\") + 1)));
+            }
+        }
+
+        return folders;
     }
 
     /// <summary>Every tag name, for autocomplete (a tag used on folders can be reused on files and vice versa).</summary>
@@ -400,21 +487,20 @@ public sealed class MediaRepository
         tag = NormalizeTag(tag);
         if (tag.Length == 0 || ids.Count == 0) return;
 
-        var (table, column, _) = Link();
 
         using var conn = _db.Open();
         using var tx = conn.BeginTransaction();
 
-        Exec(conn, tx, "INSERT OR IGNORE INTO tags(name) VALUES (@n)", ("@n", tag));
+        Exec(conn, tx, "INSERT OR IGNORE INTO tags(name) VALUES (@name)", ("@name", tag));
 
         long tagId;
-        using (var cmd = Cmd(conn, tx, "SELECT id FROM tags WHERE name = @n", ("@n", tag)))
+        using (var cmd = Cmd(conn, tx, "SELECT id FROM tags WHERE name = @name", ("@name", tag)))
             tagId = Convert.ToInt64(cmd.ExecuteScalar());
 
         foreach (long id in ids)
         {
-            Exec(conn, tx, $"INSERT OR IGNORE INTO {table}({column}, tag_id) VALUES (@i, @t)",
-                ("@i", id), ("@t", tagId));
+            Exec(conn, tx, $"INSERT OR IGNORE INTO media_tags(media_id, tag_id) VALUES (@id, @tagId)",
+                ("@id", id), ("@tagId", tagId));
         }
 
         tx.Commit();
@@ -426,20 +512,19 @@ public sealed class MediaRepository
     /// </summary>
     public void RemoveTag(long id, string tag)
     {
-        var (table, column, _) = Link();
-
         using var conn = _db.Open();
         using var tx = conn.BeginTransaction();
 
         Exec(conn, tx,
-            $"DELETE FROM {table} WHERE {column} = @i AND tag_id = (SELECT id FROM tags WHERE name = @n)",
-            ("@i", id), ("@n", tag));
+            $"DELETE FROM media_tags WHERE media_id = @id AND tag_id = (SELECT id FROM tags WHERE name = @name)",
+            ("@id", id), ("@name", tag));
 
-        Exec(conn, tx,
-            "DELETE FROM tags WHERE name = @n " +
-            "AND NOT EXISTS (SELECT 1 FROM media_tags WHERE tag_id = tags.id) " +
-            "AND NOT EXISTS (SELECT 1 FROM folder_tags WHERE tag_id = tags.id)",
-            ("@n", tag));
+        Exec(conn, tx, @"
+            DELETE FROM tags 
+            WHERE name = @name
+            AND NOT EXISTS (SELECT 1 FROM media_tags WHERE tag_id = tags.id)
+            AND NOT EXISTS (SELECT 1 FROM folder_tags WHERE tag_id = tags.id)",
+            ("@name", tag));
 
         tx.Commit();
     }

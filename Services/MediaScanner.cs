@@ -22,17 +22,13 @@ public class MediaScanner
         ".mp4", ".m4v", ".mov", ".avi", ".wmv", ".mkv", ".webm", ".3gp"
     };
 
-    public List<ScannedFile> Scan(string folderPath, bool searchSubdirectories = false)
+    public List<ScannedFile> Scan(string folderPath)
     {
         // Currently only interested in going one layer deep and displaying folders from the subfolders.
-        int maxRecursionDepth = 0;
-        if (searchSubdirectories)
-            maxRecursionDepth = 1;
-
         EnumerationOptions options = new()
         {
-            RecurseSubdirectories = searchSubdirectories,
-            MaxRecursionDepth = maxRecursionDepth,
+            RecurseSubdirectories = false,
+            MaxRecursionDepth = 1,
             IgnoreInaccessible = true
         };
         List<ScannedFile> results = new();
@@ -46,20 +42,20 @@ public class MediaScanner
             else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
             else continue;
 
-            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, null));
+            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath));
         }
 
         foreach (string subfolder in Directory.GetDirectories(folderPath, "*", SearchOption.TopDirectoryOnly))
         {
-            results.Add(new ScannedFile(subfolder.TrimEnd('\\', '/'), MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, null));
+            results.Add(new ScannedFile(subfolder, MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, folderPath));
 
-            foreach (FileInfo file in new DirectoryInfo(folderPath).EnumerateFiles("*",
-                new EnumerationOptions
-                {
-                    RecurseSubdirectories = false,
-                    MaxRecursionDepth = 0,
-                    IgnoreInaccessible = true
-                }))
+            foreach (FileInfo file in new DirectoryInfo(subfolder).EnumerateFiles("*",
+            new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                MaxRecursionDepth = 1,
+                IgnoreInaccessible = true
+            }))
             {
                 string ext = file.Extension;
 
@@ -90,6 +86,8 @@ public class MediaScanner
         if (mediaKind == MediaKind.Folder)
         {
             string[] subFiles = Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly);
+            if (subFiles.Count() == 0)
+                return null;
 
             string? firstFingerprint = ComputeFingerprint(subFiles[0], MediaKind.Image);
             string? lastFingerprint = ComputeFingerprint(subFiles[subFiles.Length - 1], MediaKind.Image);
