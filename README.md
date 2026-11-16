@@ -5,6 +5,9 @@ Using this as a way to manage a large number of back-logged media.
 
 ## TODO 
 ### QA / Bugs:
+- Folder Thumbnails not showing up
+- Add checks to load preview if collapsed dont load
+- Some weirdness when scanning and folder filters
 - Test Tagging system
 
 ### Features:
