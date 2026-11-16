@@ -18,3 +18,4 @@ Using this as a way to manage a large number of back-logged media.
 - Ability to rename files?
 - Ability to convert from webp?
 - Add mobile app + sync?
+- Ability to identify similar/duplicate images?
