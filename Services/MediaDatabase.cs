@@ -108,7 +108,8 @@ public sealed class MediaDatabase
                 folder_path  TEXT       NULL,
                 folder_thumbnail_path   TEXT NULL, -- remove when change to folder table
                 image_width  INTEGER    NULL,
-                image_height INTEGER    NULL
+                image_height INTEGER    NULL,
+                extension    TEXT       NULL
             );
             CREATE INDEX idx_media_fingerprint ON media(fingerprint, size_bytes);
             CREATE INDEX idx_media_kind ON media(media_kind);

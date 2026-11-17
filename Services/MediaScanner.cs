@@ -9,7 +9,7 @@ using System.Text;
 
 namespace PhotoTagger.Services;
 
-public sealed record ScannedFile(string Path, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, string? FolderPath, int ImageWidth, int ImageHeight);
+public sealed record ScannedFile(string Path, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, string? FolderPath, int ImageWidth, int ImageHeight, string? Extension);
 
 public class MediaScanner
 {
@@ -57,13 +57,13 @@ public class MediaScanner
                 imageHeight = info.Height;
             }
 
-            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath, imageWidth, imageHeight));
+            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath, imageWidth, imageHeight, ext));
         }
 
         // Scan subfolders and files in subfolders.
         foreach (string subfolder in Directory.GetDirectories(folderPath, "*", SearchOption.TopDirectoryOnly))
         {
-            results.Add(new ScannedFile(subfolder, MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, folderPath, 0, 0));
+            results.Add(new ScannedFile(subfolder, MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, folderPath, 0, 0, null));
 
             foreach (FileInfo file in new DirectoryInfo(subfolder).EnumerateFiles("*",
             new EnumerationOptions
@@ -91,7 +91,7 @@ public class MediaScanner
                     imageHeight = info.Height;
                 }
 
-                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder, imageWidth, imageHeight));
+                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder, imageWidth, imageHeight, ext));
             }
         }
 

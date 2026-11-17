@@ -19,9 +19,14 @@ Using this as a way to manage a large number of back-logged media.
 	- Next & Previous buttons + Keyboard shortcuts
 - Add ability to set wallpaper (https://stackoverflow.com/questions/1061678/change-desktop-wallpaper-using-code-in-net)
 	- Add ratio to details to show if image is 16:9 to help with wallpaper selection
+- Mass add tags
+- More keyboard shortcuts
+	- Focus tag add
+	- Focus current selected image in list
+	- Focus info?
 
 #### Unsure:
-- Ability to rename files?
+- More flexability with file name system? - Ability to rename files?
 - Ability to convert from webp?
 - Ability to identify similar/duplicate images?
 - Add mobile app + sync?

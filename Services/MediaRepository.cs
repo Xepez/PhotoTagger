@@ -161,7 +161,7 @@ public sealed class MediaRepository
                             UPDATE media 
                             SET path = @path, name = @name, modified_utc = @modified_utc, is_missing = 0, folder_path = @folder_path, image_height = @image_height, image_width = @image_width
                             WHERE id = @id",
-                            ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
+                            ("@path", file.Path), ("@name", CleanFileName(file.Path, file.Extension)),
                             ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId), ("@folder_path", file.FolderPath),
                             ("@image_height", file.ImageHeight), ("@image_width", file.ImageHeight));
 
@@ -173,7 +173,7 @@ public sealed class MediaRepository
                         Exec(conn, tx, @"
                             INSERT INTO media (path, name, media_kind, size_bytes, modified_utc, fingerprint, added_utc, is_folder, folder_path, image_height, image_width)
                             VALUES (@path, @name, @media_kind, @size_bytes, @modified_utc, @fingerprint, @added_utc, @is_folder, @folder_path, @image_height, @image_width)",
-                            ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
+                            ("@path", file.Path), ("@name", CleanFileName(file.Path, file.Extension)),
                             ("@media_kind", (int)file.MediaKind), ("@size_bytes", file.SizeBytes),
                             ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint),
                             ("@added_utc", now), ("@is_folder", file.MediaKind == MediaKind.Folder ? 1 : 0),
@@ -201,6 +201,15 @@ public sealed class MediaRepository
 
         tx.Commit();
         return new SyncResult(added, moved, updated, missing, unreadable);
+    }
+
+    private static string CleanFileName(string path, string extension)
+    {
+        string filePath = Path.GetFileName(path);
+        if (extension is not null)
+            filePath = filePath.Replace(extension, "");
+
+        return Regex.Replace(filePath.Replace("_", " "), @"(^\w)|(\s\w)", m => m.Value.ToUpper());
     }
 
     // A row with identical content whose file no longer exists at its recorded path (A row whose file still exists is a genuine copy and gets its own, separately tagged row.)
@@ -232,7 +241,7 @@ public sealed class MediaRepository
     public List<MediaItem> QueryMedia(MediaFilter filter)
     {
         StringBuilder sql = new(@"
-            SELECT m.id, m.path, m.media_kind, IFNULL(m.folder_thumbnail_path, ''), IFNULL(m.image_height, 0), IFNULL(m.image_width, 0)
+            SELECT m.id, m.path, m.name, m.media_kind, IFNULL(m.folder_thumbnail_path, ''), IFNULL(m.image_height, 0), IFNULL(m.image_width, 0)
             FROM media m 
             WHERE m.is_missing = 0 ");
 
@@ -320,7 +329,7 @@ public sealed class MediaRepository
         var items = new List<MediaItem>();
         int index = 0;
         while (r.Read())
-            items.Add(new MediaItem(index++, r.GetInt64(0), r.GetString(1), (MediaKind)r.GetInt32(2), r.GetString(3), r.GetInt32(4), r.GetInt32(5)));
+            items.Add(new MediaItem(index++, r.GetInt64(0), r.GetString(1), r.GetString(2), (MediaKind)r.GetInt32(3), r.GetString(4), r.GetInt32(5), r.GetInt32(6)));
 
         return items;
     }
