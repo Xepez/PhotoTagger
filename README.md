@@ -5,18 +5,20 @@ Using this as a way to manage a large number of back-logged media.
 
 ## TODO 
 ### QA / Bugs:
-- Folder Thumbnails not showing up
 - Add checks to load preview if collapsed dont load
+- New folder scanning updating folder filter selection
+- Limit tag list by only visible items
 - Some weirdness when scanning and folder filters
+- Move Folder image path save button so somewhere better
+- Add folder table save/query
 - Test Tagging system
 
 ### Features:
-- Adjust folder defaults on load
-- Display image dimensions (https://stackoverflow.com/questions/6455979/how-to-get-the-the-dimensions-of-an-image-file)
 - Add View mode
 	- Large Images + Fullscreen
 	- Next & Previous buttons + Keyboard shortcuts
 - Add ability to set wallpaper (https://stackoverflow.com/questions/1061678/change-desktop-wallpaper-using-code-in-net)
+	- Add ratio to details to show if image is 16:9 to help with wallpaper selection
 
 #### Unsure:
 - Ability to rename files?

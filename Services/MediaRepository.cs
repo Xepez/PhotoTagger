@@ -140,7 +140,7 @@ public sealed class MediaRepository
                             WHERE id = @id",
                             ("@size_bytes", file.SizeBytes), ("@modified_utc", file.ModifiedUtc),
                             ("@fingerprint", fingerprint), ("@id", row.Id), ("@folder_path", file.FolderPath),
-                            ("@image_height", 0), ("@image_width", 0));
+                            ("@image_height", file.ImageHeight), ("@image_width", file.ImageHeight));
                         updated++;
                     }
                 }
@@ -163,7 +163,7 @@ public sealed class MediaRepository
                             WHERE id = @id",
                             ("@path", file.Path), ("@name", Path.GetFileName(file.Path)),
                             ("@modified_utc", file.ModifiedUtc), ("@id", candidate.MediaId), ("@folder_path", file.FolderPath),
-                            ("@image_height", 0), ("@image_width", 0));
+                            ("@image_height", file.ImageHeight), ("@image_width", file.ImageHeight));
 
                         claimedIds.Add(candidate.MediaId);
                         moved++;
@@ -177,7 +177,7 @@ public sealed class MediaRepository
                             ("@media_kind", (int)file.MediaKind), ("@size_bytes", file.SizeBytes),
                             ("@modified_utc", file.ModifiedUtc), ("@fingerprint", fingerprint),
                             ("@added_utc", now), ("@is_folder", file.MediaKind == MediaKind.Folder ? 1 : 0),
-                            ("@folder_path", file.FolderPath), ("@image_height", 0), ("@image_width", 0)); // TODO - Test folder path - moving out of folder
+                            ("@folder_path", file.FolderPath), ("@image_height", file.ImageHeight), ("@image_width", file.ImageWidth)); // TODO - Test folder path - moving out of folder
 
                         added++;
                     }
@@ -340,6 +340,7 @@ public sealed class MediaRepository
         using var conn = _db.Open();
         using var tx = conn.BeginTransaction();
         Exec(conn, tx, sql.ToString(), ps.ToArray());
+        tx.Commit();
     }
 
     #endregion

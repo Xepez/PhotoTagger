@@ -1,4 +1,5 @@
 ﻿using PhotoTagger.Models;
+using SixLabors.ImageSharp;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +9,7 @@ using System.Text;
 
 namespace PhotoTagger.Services;
 
-public sealed record ScannedFile(string Path, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, string? FolderPath);
+public sealed record ScannedFile(string Path, MediaKind MediaKind, long SizeBytes, long ModifiedUtc, string? FolderPath, int ImageWidth, int ImageHeight);
 
 public class MediaScanner
 {
@@ -38,6 +39,7 @@ public class MediaScanner
         // Scan files in current folder.
         foreach (FileInfo file in new DirectoryInfo(folderPath).EnumerateFiles("*", options))
         {
+            // Media Kind
             string ext = file.Extension;
 
             MediaKind mediaKind;
@@ -45,13 +47,23 @@ public class MediaScanner
             else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
             else continue;
 
-            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath));
+            // Image Dimensions
+            int imageWidth = 0;
+            int imageHeight = 0;
+            if (mediaKind == MediaKind.Image)
+            {
+                var info = Image.Identify(file.FullName);
+                imageWidth = info.Width;
+                imageHeight = info.Height;
+            }
+
+            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath, imageWidth, imageHeight));
         }
 
         // Scan subfolders and files in subfolders.
         foreach (string subfolder in Directory.GetDirectories(folderPath, "*", SearchOption.TopDirectoryOnly))
         {
-            results.Add(new ScannedFile(subfolder, MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, folderPath));
+            results.Add(new ScannedFile(subfolder, MediaKind.Folder, 0, Directory.GetLastWriteTimeUtc(subfolder).Ticks, folderPath, 0, 0));
 
             foreach (FileInfo file in new DirectoryInfo(subfolder).EnumerateFiles("*",
             new EnumerationOptions
@@ -61,6 +73,7 @@ public class MediaScanner
                 IgnoreInaccessible = true
             }))
             {
+                // Media Kind
                 string ext = file.Extension;
 
                 MediaKind mediaKind;
@@ -68,7 +81,17 @@ public class MediaScanner
                 else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
                 else continue;
 
-                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder));
+                // Image Dimensions
+                int imageWidth = 0;
+                int imageHeight = 0;
+                if (mediaKind == MediaKind.Image)
+                {
+                    var info = Image.Identify(file.FullName);
+                    imageWidth = info.Width;
+                    imageHeight = info.Height;
+                }
+
+                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder, imageWidth, imageHeight));
             }
         }
 

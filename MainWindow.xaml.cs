@@ -170,6 +170,7 @@ namespace PhotoTagger
             AddFolderButton.IsEnabled = false;
             RescanButton.IsEnabled = false;
             SwitchViewButton.IsEnabled = false;
+            FilterSelectAllFolders.IsOn = false;
             ScanProgress.Visibility = Visibility.Visible;
 
             // Constructed on the UI thread, so the callback runs on the UI thread too.
@@ -196,10 +197,9 @@ namespace PhotoTagger
                     UpdateStatusText($"Scanning {root} ...");
                     ScanProgress.IsIndeterminate = true;
 
-                    // TODO - Review
                     SyncResult result = await Task.Run(() =>
                     {
-                        var files = _scanner.Scan(root);
+                        List<ScannedFile> files = _scanner.Scan(root);
                         return _repo.SyncRoot(root, files, progress);
                     });
 
@@ -227,6 +227,17 @@ namespace PhotoTagger
 
             await RefreshTagListAsync();
             await RefreshFolderListAsync();
+
+            // Select root folders only (if scanning a folder it should only select the new folder)
+            // TODO - Change to only select upper folders and not root if scanning
+            foreach (FolderInfo folder in FolderList.Items.OfType<FolderInfo>())
+            {
+                if (roots.Any(fullPath => fullPath.Contains(folder.Label, StringComparison.OrdinalIgnoreCase)))
+                {
+                    FolderList.SelectedItems.Add(folder);
+                }
+            }
+
             await ApplyMediaListFilterAsync();
         }
         #endregion
@@ -444,6 +455,63 @@ namespace PhotoTagger
             }
         }
 
+        private async void InfoFlyout_Opening(object sender, object e)
+        {
+            if (MediaGrid.SelectedItems.Count != 1 || MediaGrid.SelectedItem is not MediaItem item)
+                return;
+
+            InfoPathText.Text = item.FilePath;
+            InfoDimensionsPanel.Visibility = Visibility.Collapsed;
+            InfoSizeText.Text = "…";
+
+            try
+            {
+                if (item.IsFolder)
+                {
+                    InfoSizeText.Text = "—";
+                    return;
+                }
+
+                StorageFile file = await StorageFile.GetFileFromPathAsync(item.FilePath);
+
+                var basic = await file.GetBasicPropertiesAsync();
+                InfoSizeText.Text = FormatBytes(basic.Size);
+
+                if (item.IsVideo)
+                {
+                    var video = await file.Properties.GetVideoPropertiesAsync();
+                    if (video.Width > 0 && video.Height > 0)
+                    {
+                        InfoDimensionsText.Text = $"{video.Width} × {video.Height} px";
+                        InfoDimensionsPanel.Visibility = Visibility.Visible;
+                    }
+                }
+                else
+                {
+                    var image = await file.Properties.GetImagePropertiesAsync();
+                    if (image.Width > 0 && image.Height > 0)
+                    {
+                        InfoDimensionsText.Text = $"{image.Width} × {image.Height} px";
+                        InfoDimensionsPanel.Visibility = Visibility.Visible;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                InfoSizeText.Text = "Unavailable";
+                System.Diagnostics.Debug.WriteLine($"Info flyout failed: {ex.Message}");
+            }
+        }
+
+        private static string FormatBytes(ulong bytes)
+        {
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            double size = bytes;
+            int i = 0;
+            while (size >= 1024 && i < units.Length - 1) { size /= 1024; i++; }
+            return $"{size:0.##} {units[i]}";
+        }
+
         // Rebuilds the sidebar tag list (names + counts for the current mode) and keeps the selection.
         private async Task RefreshTagListAsync()
         {
@@ -557,7 +625,7 @@ namespace PhotoTagger
         private async Task LoadThumbnailAsync(IThumbnailItem item)
         {
             string? path = item.ThumbnailSourcePath;
-            if (path == null || item.IsLoadingThumbnail) return;
+            if (item.IsLoadingThumbnail || string.IsNullOrEmpty(path)) return;
             item.IsLoadingThumbnail = true;
 
             await _thumbnailSemaphore.WaitAsync();
@@ -597,7 +665,6 @@ namespace PhotoTagger
             MediaItem mediaItem = selected[0];
             _currentMediaSelected = mediaItem;
             PreviewFileName.Text = mediaItem.FileName;
-            PreviewFilePath.Text = mediaItem.FilePath;
             SelectionHint.Text = string.Empty;
 
             if (mediaItem.Kind == MediaKind.Folder)
@@ -630,6 +697,8 @@ namespace PhotoTagger
 
         private async void FolderGridSelected(MediaItem mediaItem, int version)
         {
+            SaveFolderThumbnail.Visibility = Visibility.Visible;
+
             try
             {
                 MediaFilter filter = BuildCustomFilter(folderPaths: new List<string>([mediaItem.FilePath]), isFolder: false);
@@ -663,8 +732,10 @@ namespace PhotoTagger
 
             TagEditorContainer.IsEnabled = false;
             PreviewFileName.Text = "No selection";
-            PreviewFilePath.Text = string.Empty;
             SelectionHint.Text = "Select an item to see details and add tags.";
+
+            SaveFolderThumbnail.Visibility = Visibility.Collapsed;
+            InfoButton.Visibility = MediaGrid.SelectedItems.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private async Task ShowPreviewAsync(MediaItem item, int version)

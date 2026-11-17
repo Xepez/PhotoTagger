@@ -107,8 +107,8 @@ public sealed class MediaDatabase
                 is_folder    TINYINT(1) NOT NULL DEFAULT 0, -- replace with folder_id when change to folder table
                 folder_path  TEXT       NULL,
                 folder_thumbnail_path   TEXT NULL, -- remove when change to folder table
-                image_height INTEGER    NULL,
-                image_width  INTEGER    NULL
+                image_width  INTEGER    NULL,
+                image_height INTEGER    NULL
             );
             CREATE INDEX idx_media_fingerprint ON media(fingerprint, size_bytes);
             CREATE INDEX idx_media_kind ON media(media_kind);

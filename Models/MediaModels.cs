@@ -27,6 +27,9 @@ public interface IThumbnailItem
 /// <summary>One photo or video in the library (a row in the media table).</summary>
 public partial class MediaItem(int index, long id, string filePath, MediaKind kind, string folderThumbnailPath, int imageHeight, int imageWidth) : INotifyPropertyChanged, IThumbnailItem
 {
+    // TODO - Change Default Image
+    private readonly string _defaultThumbnailImage = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..\\..\\..\\..\\..\\..\\")) + "Assets\\StoreLogo.png";
+
     public int Index { get; } = index;
     public long Id { get; } = id;
     public string FilePath { get; } = filePath;
@@ -41,7 +44,7 @@ public partial class MediaItem(int index, long id, string filePath, MediaKind ki
     public Visibility VideoBadgeVisibility => IsVideo ? Visibility.Visible : Visibility.Collapsed;
     public Visibility FolderBadgeVisibility => IsFolder ? Visibility.Visible : Visibility.Collapsed;
 
-    string? IThumbnailItem.ThumbnailSourcePath => Kind == MediaKind.Folder ? FolderThumbnailPath : FilePath;
+    string? IThumbnailItem.ThumbnailSourcePath => Kind == MediaKind.Folder ? !string.IsNullOrEmpty(FolderThumbnailPath) ? FolderThumbnailPath : _defaultThumbnailImage : FilePath;
     MediaKind IThumbnailItem.ThumbnailKind => Kind;
 
     // Used by the thumbnail loader so one item isn't loaded twice at once.

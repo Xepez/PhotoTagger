@@ -90,9 +90,41 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <!-- Folder Filtering -->
+                        <!-- File and Type Filtering -->
                         <Expander
                             Grid.Row="0"
+                            IsExpanded="True"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch">
+
+                            <Expander.Header>
+                                <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
+                            </Expander.Header>
+
+                            <StackPanel Spacing="8">
+
+                                <TextBox
+                                    x:Name="SearchFileNameBox"
+                                    PlaceholderText="Search files..."
+                                    TextChanged="SearchFileNameBox_TextChanged" />
+
+                                <ComboBox
+                                    x:Name="KindFilter"
+                                    HorizontalAlignment="Stretch"
+                                    SelectedIndex="0"
+                                    SelectionChanged="KindFilter_SelectionChanged">
+                                    <ComboBoxItem Content="All" />
+                                    <ComboBoxItem Content="Photos only" />
+                                    <ComboBoxItem Content="Videos only" />
+                                    <ComboBoxItem Content="Folders only" />
+                                </ComboBox>
+
+                            </StackPanel>
+                        </Expander>
+
+                        <!-- Folder Filtering -->
+                        <Expander
+                            Grid.Row="1"
                             IsExpanded="True"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Stretch">
@@ -122,38 +154,6 @@
                                     SelectionMode="Multiple"
                                     DisplayMemberPath="Label"
                                     SelectionChanged="FolderList_SelectionChanged" />
-
-                            </StackPanel>
-                        </Expander>
-
-                        <!-- File and Type Filtering -->
-                        <Expander
-                            Grid.Row="1"
-                            IsExpanded="True"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch">
-
-                            <Expander.Header>
-                                <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
-                            </Expander.Header>
-
-                            <StackPanel Spacing="8">
-
-                                <TextBox
-                                    x:Name="SearchFileNameBox"
-                                    PlaceholderText="Search files..."
-                                    TextChanged="SearchFileNameBox_TextChanged" />
-
-                                <ComboBox
-                                    x:Name="KindFilter"
-                                    HorizontalAlignment="Stretch"
-                                    SelectedIndex="0"
-                                    SelectionChanged="KindFilter_SelectionChanged">
-                                    <ComboBoxItem Content="All" />
-                                    <ComboBoxItem Content="Photos only" />
-                                    <ComboBoxItem Content="Videos only" />
-                                    <ComboBoxItem Content="Folders only" />
-                                </ComboBox>
 
                             </StackPanel>
                         </Expander>
@@ -365,6 +365,55 @@
                                 Stretch="Uniform"
                                 Visibility="Collapsed" />
 
+                            <!-- Info button (top-right corner of the preview) -->
+                            <Button
+                                x:Name="InfoButton"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="8"
+                                Padding="6"
+                                CornerRadius="16"
+                                Background="#99000000"
+                                BorderThickness="0"
+                                Visibility="Collapsed"
+                                AutomationProperties.Name="Show file info"
+                                ToolTipService.ToolTip="File info">
+
+                                <FontIcon Glyph="&#xE946;" FontSize="16" Foreground="White" />
+
+                                <Button.Flyout>
+                                        <Flyout
+                                            x:Name="InfoFlyout"
+                                            Placement="BottomEdgeAlignedRight"
+                                            Opening="InfoFlyout_Opening">
+
+                                        <StackPanel Spacing="10" MaxWidth="320">
+
+                                            <TextBlock Text="Details" FontSize="16" FontWeight="SemiBold" />
+
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="Path" Opacity="0.7" FontSize="12" />
+                                                <TextBlock
+                                                    x:Name="InfoPathText"
+                                                    TextWrapping="Wrap"
+                                                    IsTextSelectionEnabled="True" />
+                                            </StackPanel>
+
+                                            <StackPanel x:Name="InfoDimensionsPanel" Spacing="2">
+                                                <TextBlock Text="Dimensions" Opacity="0.7" FontSize="12" />
+                                                <TextBlock x:Name="InfoDimensionsText" />
+                                            </StackPanel>
+
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="Size" Opacity="0.7" FontSize="12" />
+                                                <TextBlock x:Name="InfoSizeText" />
+                                            </StackPanel>
+
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+
                         </Grid>
 
                         <!-- Previous / next through the selected folder (hidden unless a folder is selected) -->
@@ -421,15 +470,10 @@
                                 FontWeight="SemiBold"
                                 TextWrapping="Wrap" />
 
-                            <TextBlock
-                                x:Name="PreviewFilePath"
-                                Margin="0,4,0,0"
-                                Opacity="0.7"
-                                TextWrapping="Wrap" />
-
                             <Button
                                 x:Name="SaveFolderThumbnail"
-                                Click="SaveFolderThumbnail_Click">
+                                Click="SaveFolderThumbnail_Click"
+                                Visibility="Collapsed">
                                 <StackPanel Orientation="Horizontal">
                                     <FontIcon Glyph="&#xE74E;" FontSize="12" />
                                     <TextBlock Text=" Save To Folder Thumbnail" />
