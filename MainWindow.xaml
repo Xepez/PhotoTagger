@@ -25,7 +25,7 @@
 
             <Button
                 x:Name="SwitchViewButton"
-                Content="Switch View"
+                Content="Full View"
                 Click="SwitchViewButton_Click" />
 
             <Button
@@ -56,8 +56,83 @@
 
         </StackPanel>
 
-        <!-- Main area: filters | thumbnails | preview -->
-        <Grid Grid.Row="1" ColumnSpacing="16">
+        <!-- Main Area -->
+        <Grid x:Name="MainArea" Grid.Row="1" ColumnSpacing="16">
+
+            <Grid.Resources>
+                <!-- Default GridView layout -->
+                <ItemsPanelTemplate x:Key="GridItemsPanel">
+                    <ItemsWrapGrid Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+
+                <!-- Single horizontally scrolling row -->
+                <ItemsPanelTemplate x:Key="StripItemsPanel">
+                    <ItemsWrapGrid Orientation="Vertical" MaximumRowsOrColumns="1" />
+                </ItemsPanelTemplate>
+
+                <!-- Compact thumbnail template for the full row (50% of the grid size) -->
+                <DataTemplate x:Key="StripItemTemplate">
+                    <StackPanel Width="90" Margin="3">
+
+                        <Border
+                            Width="90"
+                            Height="70"
+                            CornerRadius="3"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}">
+
+                            <Grid>
+                                <Image
+                                    Source="{Binding Thumbnail}"
+                                    Stretch="UniformToFill" />
+
+                                <!-- Video badge -->
+                                <Border
+                                    Background="#99000000"
+                                    CornerRadius="3"
+                                    Padding="2"
+                                    Margin="3"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Visibility="{Binding VideoBadgeVisibility}">
+                                    <FontIcon
+                                        Glyph="&#xE714;"
+                                        Foreground="White"
+                                        FontSize="10" />
+                                </Border>
+
+                                <!-- Folder badge -->
+                                <Border
+                                    Background="#99000000"
+                                    CornerRadius="3"
+                                    Padding="2"
+                                    Margin="3"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Visibility="{Binding FolderBadgeVisibility}">
+                                    <FontIcon
+                                        Glyph="&#xE8B7;"
+                                        Foreground="White"
+                                        FontSize="10" />
+                                </Border>
+                            </Grid>
+
+                        </Border>
+
+                        <TextBlock
+                            Text="{Binding FileName}"
+                            FontSize="11"
+                            HorizontalAlignment="Center"
+                            TextTrimming="CharacterEllipsis"
+                            Margin="2,3,2,0" />
+
+                    </StackPanel>
+                </DataTemplate>
+            </Grid.Resources>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="FilterColumn" Width="Auto" />
@@ -65,8 +140,8 @@
                 <ColumnDefinition x:Name="PreviewColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- Filter panel (collapsible) -->
-            <Grid Grid.Column="0" ColumnSpacing="4">
+            <!-- Filter Panel (collapsible) -->
+            <Grid Grid.Column="0" Grid.RowSpan="2" ColumnSpacing="4">
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -98,7 +173,7 @@
                             HorizontalContentAlignment="Stretch">
 
                             <Expander.Header>
-                                <TextBlock Text="Filters" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="Files" FontSize="16" FontWeight="SemiBold" />
                             </Expander.Header>
 
                             <StackPanel Spacing="8">
@@ -200,7 +275,7 @@
                                     <CheckBox
                                         x:Name="UntaggedOnly"
                                         Grid.Column="0"
-                                        Content="Untagged Only"
+                                        Content="Untagged"
                                         MinWidth="0"
                                         VerticalAlignment="Center"
                                         Checked="FilterTagToggle_Changed"
@@ -247,9 +322,10 @@
 
             </Grid>
 
-            <!-- Photo/video grid -->
+            <!-- Photo/Video Grid (becomes a single scrolling row in full view) -->
             <GridView
                 x:Name="MediaGrid"
+                Grid.Row="0"
                 Grid.Column="1"
                 SelectionMode="Extended"
                 SelectionChanged="MediaGrid_SelectionChanged">
@@ -314,8 +390,12 @@
 
             </GridView>
 
-            <!-- Preview panel (collapsible) -->
-            <Grid Grid.Column="2" ColumnSpacing="4">
+            <!-- Preview Panel (collapsible) -->
+            <Grid
+                x:Name="PreviewPanel"
+                Grid.Row="0"
+                Grid.Column="2"
+                ColumnSpacing="4">
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -382,7 +462,7 @@
                                 <FontIcon Glyph="&#xE946;" FontSize="16" Foreground="White" />
 
                                 <Button.Flyout>
-                                        <Flyout
+                                    <Flyout
                                             x:Name="InfoFlyout"
                                             Placement="BottomEdgeAlignedRight"
                                             Opening="InfoFlyout_Opening">
@@ -407,6 +487,11 @@
                                             <StackPanel Spacing="2">
                                                 <TextBlock Text="Size" Opacity="0.7" FontSize="12" />
                                                 <TextBlock x:Name="InfoSizeText" />
+                                            </StackPanel>
+                                            
+                                            <StackPanel Spacing="2">
+                                                <TextBlock Text="Extension" Opacity="0.7" FontSize="12" />
+                                                <TextBlock x:Name="InfoExtensionText" />
                                             </StackPanel>
 
                                         </StackPanel>
@@ -440,12 +525,29 @@
                                 </StackPanel>
                             </Button>
 
-                            <TextBlock
-                                x:Name="NavText"
+                            <StackPanel
                                 Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
                                 VerticalAlignment="Center"
-                                HorizontalAlignment="Center"
-                                TextTrimming="CharacterEllipsis" />
+                                HorizontalAlignment="Center">
+
+                                <TextBlock
+                                    x:Name="NavText"
+                                    MaxWidth="400"
+                                    VerticalAlignment="Center"
+                                    TextTrimming="CharacterEllipsis" />
+
+                                <Button
+                                    x:Name="SaveFolderThumbnail"
+                                    Click="SaveFolderThumbnail_Click"
+                                    Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal">
+                                        <FontIcon Glyph="&#xE8B7;" FontSize="12" />
+                                        <FontIcon Glyph="&#xE74E;" FontSize="12" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
 
                             <Button
                                 x:Name="NextButton"
@@ -459,7 +561,9 @@
 
                         </Grid>
 
+                        <!-- File name, tags and tag editor (hidden in full view) -->
                         <StackPanel
+                            x:Name="PreviewDetails"
                             Grid.Row="2"
                             Margin="0,12,0,0">
 
@@ -469,16 +573,6 @@
                                 FontSize="18"
                                 FontWeight="SemiBold"
                                 TextWrapping="Wrap" />
-
-                            <Button
-                                x:Name="SaveFolderThumbnail"
-                                Click="SaveFolderThumbnail_Click"
-                                Visibility="Collapsed">
-                                <StackPanel Orientation="Horizontal">
-                                    <FontIcon Glyph="&#xE74E;" FontSize="12" />
-                                    <TextBlock Text=" Save To Folder Thumbnail" />
-                                </StackPanel>
-                            </Button>
 
                             <TextBlock
                                 Text="Tags"

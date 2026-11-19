@@ -41,7 +41,11 @@ namespace PhotoTagger
         private int _folderIndex = -1;
         private readonly ObservableCollection<string> _currentTags = new();
 
-        // All values
+        // Views
+        private bool _view;
+        private DataTemplate? _gridItemTemplate;
+
+        // All Filter Values
         private List<string> _allTagNames = new();
         private List<string> _allFolderNames = new();
 
@@ -109,10 +113,60 @@ namespace PhotoTagger
 
         #region Header Buttons
 
-        private async void SwitchViewButton_Click(object sender, RoutedEventArgs e)
+        private void SwitchViewButton_Click(object sender, RoutedEventArgs e)
         {
-            // TODO
-            PopupMessage(true, "Switch View - WIP");
+            SetView(!_view);
+        }
+
+        private void SetView(bool strip)
+        {
+            if (strip == _view) return;
+            _view = strip;
+
+            // Remember the original grid template the first time we switch
+            _gridItemTemplate ??= MediaGrid.ItemTemplate;
+
+            // The collapse toggle doesn't apply here, so force the preview visible
+            // and restore whatever state it had when leaving the full view.
+            if (strip)
+            {
+                PreviewContent.Visibility = Visibility.Visible;
+                PreviewToggleButton.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                PreviewContent.Visibility = Visibility.Visible;
+                PreviewToggleButton.Visibility = Visibility.Visible;
+            }
+
+            // Preview on top spanning both columns, media list below
+            MainArea.RowSpacing = strip ? 12 : 0;
+
+            Grid.SetRow(PreviewPanel, 0);
+            Grid.SetColumn(PreviewPanel, strip ? 1 : 2);
+            Grid.SetColumnSpan(PreviewPanel, strip ? 2 : 1);
+            PreviewPanel.ColumnSpacing = strip ? 0 : 4;
+
+            Grid.SetRow(MediaGrid, strip ? 1 : 0);
+            Grid.SetColumnSpan(MediaGrid, strip ? 2 : 1);
+
+            // Wrapping grid <-> single scrolling row, with compact thumbnails
+            MediaGrid.ItemsPanel = (ItemsPanelTemplate)MainArea.Resources[strip ? "StripItemsPanel" : "GridItemsPanel"];
+            MediaGrid.ItemTemplate = strip ? (DataTemplate)MainArea.Resources["StripItemTemplate"] : _gridItemTemplate;
+            MediaGrid.Height = strip ? 120 : double.NaN;
+
+            ScrollViewer.SetHorizontalScrollMode(MediaGrid, strip ? ScrollMode.Enabled : ScrollMode.Disabled);
+            ScrollViewer.SetHorizontalScrollBarVisibility(MediaGrid, strip ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled);
+            ScrollViewer.SetVerticalScrollMode(MediaGrid, strip ? ScrollMode.Disabled : ScrollMode.Enabled);
+            ScrollViewer.SetVerticalScrollBarVisibility(MediaGrid, strip ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto);
+
+            // Full view is for viewing only: hide file name, tags and the tag editor
+            PreviewDetails.Visibility = strip ? Visibility.Collapsed : Visibility.Visible;
+
+            SwitchViewButton.Content = strip ? "Grid View" : "Full View";
+
+            if (MediaGrid.SelectedItem != null)
+                MediaGrid.ScrollIntoView(MediaGrid.SelectedItem);
         }
 
         private async void AddFolderButton_Click(object sender, RoutedEventArgs e)
@@ -463,12 +517,14 @@ namespace PhotoTagger
             InfoPathText.Text = item.FilePath;
             InfoDimensionsPanel.Visibility = Visibility.Collapsed;
             InfoSizeText.Text = "…";
+            InfoExtensionText.Text = "…";
 
             try
             {
                 if (item.IsFolder)
                 {
                     InfoSizeText.Text = "—";
+                    InfoExtensionText.Text = "Folder";
                     return;
                 }
 
@@ -476,6 +532,7 @@ namespace PhotoTagger
 
                 var basic = await file.GetBasicPropertiesAsync();
                 InfoSizeText.Text = FormatBytes(basic.Size);
+                InfoExtensionText.Text = item.Extension;
 
                 if (item.IsVideo)
                 {
@@ -499,6 +556,7 @@ namespace PhotoTagger
             catch (Exception ex)
             {
                 InfoSizeText.Text = "Unavailable";
+                InfoExtensionText.Text = "Unavailable";
                 System.Diagnostics.Debug.WriteLine($"Info flyout failed: {ex.Message}");
             }
         }

@@ -40,11 +40,11 @@ public class MediaScanner
         foreach (FileInfo file in new DirectoryInfo(folderPath).EnumerateFiles("*", options))
         {
             // Media Kind
-            string ext = file.Extension;
+            string extension = file.Extension;
 
             MediaKind mediaKind;
-            if (ImageExtensions.Contains(ext)) mediaKind = MediaKind.Image;
-            else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
+            if (ImageExtensions.Contains(extension)) mediaKind = MediaKind.Image;
+            else if (VideoExtensions.Contains(extension)) mediaKind = MediaKind.Video;
             else continue;
 
             // Image Dimensions
@@ -57,7 +57,7 @@ public class MediaScanner
                 imageHeight = info.Height;
             }
 
-            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath, imageWidth, imageHeight, ext));
+            results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, folderPath, imageWidth, imageHeight, extension));
         }
 
         // Scan subfolders and files in subfolders.
@@ -74,11 +74,11 @@ public class MediaScanner
             }))
             {
                 // Media Kind
-                string ext = file.Extension;
+                string extension = file.Extension;
 
                 MediaKind mediaKind;
-                if (ImageExtensions.Contains(ext)) mediaKind = MediaKind.Image;
-                else if (VideoExtensions.Contains(ext)) mediaKind = MediaKind.Video;
+                if (ImageExtensions.Contains(extension)) mediaKind = MediaKind.Image;
+                else if (VideoExtensions.Contains(extension)) mediaKind = MediaKind.Video;
                 else continue;
 
                 // Image Dimensions
@@ -91,7 +91,7 @@ public class MediaScanner
                     imageHeight = info.Height;
                 }
 
-                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder, imageWidth, imageHeight, ext));
+                results.Add(new ScannedFile(file.FullName, mediaKind, file.Length, file.LastWriteTimeUtc.Ticks, subfolder, imageWidth, imageHeight, extension));
             }
         }
 

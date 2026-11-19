@@ -9,14 +9,12 @@ Using this as a way to manage a large number of back-logged media.
 - New folder scanning updating folder filter selection
 - Limit tag list by only visible items
 - Some weirdness when scanning and folder filters
-- Move Folder image path save button so somewhere better
+- Errors when viewing gifs/videos in Full View
 - Add folder table save/query
 - Test Tagging system
 
 ### Features:
-- Add View mode
-	- Large Images + Fullscreen
-	- Next & Previous buttons + Keyboard shortcuts
+- Add Default for pre-loaded folders (maybe remember previous selections? If so will need reset)
 - Add ability to set wallpaper (https://stackoverflow.com/questions/1061678/change-desktop-wallpaper-using-code-in-net)
 	- Add ratio to details to show if image is 16:9 to help with wallpaper selection
 - Mass add tags

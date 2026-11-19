@@ -25,7 +25,7 @@ public interface IThumbnailItem
 }
 
 /// <summary>One photo or video in the library (a row in the media table).</summary>
-public partial class MediaItem(int index, long id, string filePath, string fileName, MediaKind kind, string folderThumbnailPath, int imageHeight, int imageWidth) : INotifyPropertyChanged, IThumbnailItem
+public partial class MediaItem(int index, long id, string filePath, string fileName, MediaKind kind, string folderThumbnailPath, int imageHeight, int imageWidth, string extension) : INotifyPropertyChanged, IThumbnailItem
 {
     // TODO - Change Default Image
     private readonly string _defaultThumbnailImage = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..\\..\\..\\..\\..\\..\\")) + "Assets\\StoreLogo.png";
@@ -38,6 +38,7 @@ public partial class MediaItem(int index, long id, string filePath, string fileN
     public int ImageHeight { get; } = imageHeight;
     public int ImageWidth { get; } = imageWidth;
     public string FileName { get; } = fileName;
+    public string Extension { get; } = extension;
 
     public bool IsVideo => Kind == MediaKind.Video;
     public bool IsFolder => Kind == MediaKind.Folder;
